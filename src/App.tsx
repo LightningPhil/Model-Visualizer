@@ -55,6 +55,14 @@ import { cachePolicyLabel, residentCount, kvHeadFor } from './model/attention'
 import { CachePolicyControls } from './components/CachePolicyControls'
 import { NUMERICAL_SESSION_KEY } from './model/numerics/identity'
 import type { NumericalSession } from './model/numerics/session'
+import { CHECKPOINT_SESSION_KEY } from './model/checkpoints/identity'
+import type { CheckpointSession } from './model/checkpoints/session'
+
+const LocalModelWorkbench = lazy(() =>
+  import('./components/numerical/LocalModelWorkbench').then((module) => ({
+    default: module.LocalModelWorkbench,
+  })),
+)
 
 const NumericalWorkbench = lazy(() =>
   import('./components/numerical/NumericalWorkbench').then((module) => ({
@@ -106,13 +114,16 @@ export default function App() {
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [mobileNav, setMobileNav] = useState(false)
   const [labOpen, setLabOpen] = useState(true)
-  const [modal, setModal] = useState<'guide' | 'search' | 'config' | 'numerical' | null>(null)
+  const [modal, setModal] = useState<
+    'guide' | 'search' | 'config' | 'numerical' | 'local-model' | null
+  >(null)
   const [numericalEntry, setNumericalEntry] = useState<string>()
   const [guideTab, setGuideTab] = useState<'guide' | 'sources' | 'format'>('guide')
   const [query, setQuery] = useState('')
   const [toast, setToast] = useState('')
   const [saved, setSaved] = useState(true)
   const [documentRevision, setDocumentRevision] = useState(0)
+  const documentEpoch = useRef(0)
   const [selectedLayer, setSelectedLayer] = useState(0)
   const [selectedHead, setSelectedHead] = useState(0)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -125,6 +136,14 @@ export default function App() {
     [],
   )
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const saveCheckpointSession = useCallback(
+    (session: CheckpointSession) =>
+      setDoc((current) => ({
+        ...current,
+        extensions: { ...current.extensions, [CHECKPOINT_SESSION_KEY]: session },
+      })),
+    [],
+  )
 
   const authoredGraph = doc.graphs.find((g) => g.id === doc.ui.activeGraph)!
   const graph = useMemo(
@@ -215,18 +234,29 @@ export default function App() {
   }, [])
 
   function updateGraph(id: string, change: (graph: ModelGraph) => ModelGraph) {
-    setDoc((current) => ({
-      ...current,
-      graphs: current.graphs.map((g) => (g.id === id ? change(g) : g)),
-    }))
+    // Camera animations and worker completions from a replaced document can
+    // finish before React unmounts its old canvas. Scope writes to the document
+    // instance that supplied this callback, even when both graph IDs match.
+    if (documentEpoch.current !== documentRevision) return
+    setDoc((current) =>
+      documentEpoch.current !== documentRevision
+        ? current
+        : {
+            ...current,
+            graphs: current.graphs.map((g) => (g.id === id ? change(g) : g)),
+          },
+    )
   }
 
   async function loadFile(file: File | undefined) {
     if (!file) return
     try {
       const imported = upgrade(await importDocument(file))
+      documentEpoch.current++
       setDoc(imported)
-      setDocumentRevision((value) => value + 1)
+      setDocumentRevision(documentEpoch.current)
+      setFocus(undefined)
+      setDiagramReady(false)
       setSelection(null)
       setDecode(false)
       setSimulating(false)
@@ -428,6 +458,19 @@ export default function App() {
               <FlaskConical size={17} />
               <span>
                 Tensor laboratory<small>Run the mathematics</small>
+              </span>
+            </button>
+            <button
+              className="journey-button numerical-entry"
+              onClick={() => {
+                sim.setPlaying(false)
+                setMobileNav(false)
+                setModal('local-model')
+              }}
+            >
+              <Cpu size={17} />
+              <span>
+                Local trained model<small>Real weights · real activations</small>
               </span>
             </button>
           </div>
@@ -935,6 +978,29 @@ export default function App() {
               }))
             }
             notify={notify}
+          />
+        </Suspense>
+      )}
+      {modal === 'local-model' && (
+        <Suspense
+          fallback={
+            <Dialog title="Opening the local model…" onClose={() => setModal(null)}>
+              <p>Preparing checkpoint controls. No inference has started.</p>
+            </Dialog>
+          }
+        >
+          <LocalModelWorkbench
+            doc={doc}
+            reference={referenceDocument}
+            onSave={saveCheckpointSession}
+            onClose={() => setModal(null)}
+            notify={notify}
+            onTheme={() =>
+              setDoc((current) => ({
+                ...current,
+                ui: { ...current.ui, theme: current.ui.theme === 'dark' ? 'light' : 'dark' },
+              }))
+            }
           />
         </Suspense>
       )}

@@ -1,0 +1,36 @@
+{
+  "formatVersion": 1,
+  "id": "karpathy-stories260k",
+  "name": "Stories260K",
+  "author": "Andrej Karpathy",
+  "revision": "0bd21da7698eaf29a0d7de3992de8a46ef624add",
+  "license": "MIT",
+  "source": "https://huggingface.co/karpathy/tinyllamas/tree/0bd21da7698eaf29a0d7de3992de8a46ef624add/stories260K",
+  "implementation": "https://github.com/karpathy/llama2.c/blob/350e04fe35433e6d2941dce5a1f53308f87058eb/run.c",
+  "training": "https://github.com/karpathy/llama2.c/blob/350e04fe35433e6d2941dce5a1f53308f87058eb/doc/stories260K.md",
+  "weights": {
+    "file": "stories260K.bin",
+    "bytes": 1056540,
+    "sha256": "b0a507e7ad0f626624f17112325e66691f9076d622e1d3274d103d00299f2696"
+  },
+  "tokenizer": {
+    "file": "tok512.bin",
+    "bytes": 6227,
+    "sha256": "037cb335abb25d1fa9e8ecae30ed2a3a8ace9302862ebcdc05d51a6bbb10c312"
+  },
+  "config": {
+    "dModel": 64,
+    "ffnDim": 172,
+    "nLayers": 5,
+    "nQueryHeads": 8,
+    "nKvHeads": 4,
+    "headDim": 8,
+    "vocabSize": 512,
+    "contextLength": 512,
+    "dtypeBytes": 4,
+    "attention": "GQA",
+    "kvCache": { "mode": "full" }
+  },
+  "uniqueParameters": 260032,
+  "notes": "Trained on TinyStories. A very small base completion model, not an instruction/chat model. Embedding and vocabulary projection weights are tied. Assets are bundled to allow offline inference after the app loads. No prompt is sent to a model service."
+}

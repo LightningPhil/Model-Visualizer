@@ -201,6 +201,13 @@ export type DiagramProps = {
 }
 
 function Canvas(props: DiagramProps) {
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
   const { graph, onSelect, onOpen } = props
   const flow = useReactFlow<VisualNode, VisualEdge>()
   const viewport = useViewport()
@@ -282,7 +289,7 @@ function Canvas(props: DiagramProps) {
         onPaneClick={() => onSelect(null)}
         onNodeDragStop={(_, node) => onDragStop(node)}
         onMoveEnd={(_, next) => {
-          if (initialized.current) props.onViewport(next)
+          if (initialized.current && mounted.current) props.onViewport(next)
         }}
         onInit={() => {
           initialized.current = true

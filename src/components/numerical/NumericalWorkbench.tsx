@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
@@ -94,6 +94,8 @@ const questions = [
     call: 1,
     description:
       'The next decoder call reuses this layer’s retained K/V. Change retention in Run setup to compare full, sparse and sliding state.',
+    checkpointDescription:
+      'This checkpoint retains the full causal prefix. Each layer reuses its own K/V with absolute positions. A selected output ID enters the cache only when the next forward pass consumes it.',
   },
 ]
 const chapters = [
@@ -127,7 +129,9 @@ function downloadTrace(trace: NumericalTrace) {
     ),
     a = document.createElement('a')
   a.href = url
-  a.download = `numerical-teaching-run-seed-${trace.settings.seed}.json`
+  a.download = trace.checkpoint
+    ? `${trace.checkpoint.id}-trace.json`
+    : `numerical-teaching-run-seed-${trace.settings.seed}.json`
   a.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
@@ -140,6 +144,7 @@ export function NumericalWorkbench({
   onClose,
   onTheme,
   notify: onNotify,
+  trained,
 }: {
   doc: ModelDocument
   reference: ModelDocument
@@ -148,8 +153,19 @@ export function NumericalWorkbench({
   onClose: () => void
   onTheme: () => void
   notify: (message: string) => void
+  trained?: {
+    trace: NumericalTrace
+    session: NumericalSession
+    writable: boolean
+    controls: ReactNode
+    tokenizer: { piece: (id: number) => string; decode: (ids: number[]) => string }
+  }
 }) {
-  const [initial] = useState(() => loadNumericalSession(doc)),
+  const [initial] = useState(() =>
+      trained
+        ? { session: trained.session, writable: trained.writable }
+        : loadNumericalSession(doc),
+    ),
     saveRef = useRef(onSave)
   saveRef.current = onSave
   const [session, setSession] = useState(initial.session),
@@ -177,17 +193,26 @@ export function NumericalWorkbench({
     const timer = setTimeout(() => setNotice(''), 5000)
     return () => clearTimeout(timer)
   }, [notice])
-  const trace = useMemo(() => executeTeachingModel(session.settings), [session.settings])
+  const trace = useMemo(
+    () => trained?.trace ?? executeTeachingModel(session.settings),
+    [session.settings, trained?.trace],
+  )
   const previousTrace = useRef(trace),
     initialCameraDone = useRef(false)
   const baseline = useMemo(
-    () => (session.pinned ? executeTeachingModel(session.pinned) : undefined),
-    [session.pinned],
+    () => (!trained && session.pinned ? executeTeachingModel(session.pinned) : undefined),
+    [session.pinned, Boolean(trained)],
   )
   const frame = trace.frames[Math.min(cursor, trace.frames.length - 1)]
   const graph = useMemo(
-    () => numericalGraph(reference, session.settings, session.layout),
-    [reference, session.settings, session.layout],
+    () =>
+      numericalGraph(
+        reference,
+        session.settings,
+        session.layout,
+        trained ? trace.config : undefined,
+      ),
+    [reference, session.settings, session.layout, trained ? trace.config : undefined],
   )
   const completed = useMemo(
     () => new Set(trace.frames.slice(0, cursor).flatMap((f) => f.nodeIds)),
@@ -354,7 +379,9 @@ export function NumericalWorkbench({
     setBack([])
     setNotesOpen(false)
     setLesson(
-      'A seeded, untrained parameter tensor. Its values stay fixed across decoder calls; each layer has its own matrices.',
+      trained
+        ? 'A trained parameter from the verified checkpoint. Values stay fixed across decoder calls. Tied weights are identified explicitly.'
+        : 'A seeded, untrained parameter tensor. Its values stay fixed across decoder calls; each layer has its own matrices.',
     )
     inspect(next, false)
     const owner = trace.frames.find((f) => f.inputs.includes(next.tensor))
@@ -434,12 +461,21 @@ export function NumericalWorkbench({
         ? (unravel(currentCell.index, tensor.shape)[tensor.axes.indexOf('T')] ?? 0)
         : 0
   return (
-    <Dialog title="The mathematics, alive." className="numerical-modal" onClose={onClose}>
+    <Dialog
+      title="The mathematics, alive."
+      className={`numerical-modal${trained ? ' trained-modal' : ''}`}
+      onClose={onClose}
+    >
       <div className="numerical-topline">
         <span className="numerical-badge">
-          <FlaskConical size={12} /> NUMERICAL · UNTRAINED
+          <FlaskConical size={12} />{' '}
+          {trained ? 'LOCAL · TRAINED · Stories260K' : 'NUMERICAL · UNTRAINED'}
         </span>
-        <span>2 layers · D 16 · Hq 4 · Hkv {trace.config.nKvHeads} · Dh 4 · F 32 · V 256</span>
+        <span>
+          {trace.config.nLayers} layers · D {trace.config.dModel} · Hq {trace.config.nQueryHeads} ·
+          Hkv {trace.config.nKvHeads} · Dh {trace.config.headDim} · F {trace.config.ffnDim} · V{' '}
+          {trace.config.vocabSize}
+        </span>
         <button onClick={() => downloadTrace(trace)}>
           <Download size={13} /> Export trace
         </button>
@@ -484,7 +520,14 @@ export function NumericalWorkbench({
       </div>
       <div className={`numerical-body pane-${mobilePane}`}>
         <aside className="numerical-journey" aria-label="Numerical learning journey">
-          {setup ? (
+          {setup && trained ? (
+            <div className="numerical-setup">
+              {trained.controls}
+              <button className="button" onClick={() => setSetup(false)}>
+                Explore the run <ArrowRight size={13} />
+              </button>
+            </div>
+          ) : setup ? (
             <div className="numerical-setup">
               <h3>Make a small experiment.</h3>
               <p>
@@ -581,7 +624,7 @@ export function NumericalWorkbench({
                     seek(trace.frames.findIndex((f) => f.call === Number(e.target.value)))
                   }
                 >
-                  {Array.from({ length: session.settings.generate }, (_, i) => (
+                  {Array.from({ length: new Set(trace.frames.map((f) => f.call)).size }, (_, i) => (
                     <option key={i} value={i}>
                       {i === 0 ? 'Prefill · input in parallel' : `Decode ${i} · one new query`}
                     </option>
@@ -589,7 +632,18 @@ export function NumericalWorkbench({
                 </select>
               </label>
               <nav className="numerical-chapters">
-                {chapters.map(([title, node]) => (
+                {(trained
+                  ? [
+                      ['Input', 'tokens.lookup'],
+                      ...Array.from({ length: trace.config.nLayers }, (_, l) => [
+                        [`L${l} · attention`, `layer-${l}.norm1`],
+                        [`L${l} · feed-forward`, `layer-${l}.norm2`],
+                      ]).flat(),
+                      ['Vocabulary', 'output.lmhead'],
+                      ['Choose & loop', 'output.sample'],
+                    ]
+                  : chapters
+                ).map(([title, node]) => (
                   <button key={node} onClick={() => jump(node)}>
                     <span />
                     {title}
@@ -603,10 +657,19 @@ export function NumericalWorkbench({
                   <button
                     key={q.node}
                     disabled={
-                      (q.multiple && session.settings.inputIds.length < 2) ||
-                      q.call >= session.settings.generate
+                      (q.multiple && trace.settings.inputIds.length < 2) ||
+                      q.call >= new Set(trace.frames.map((f) => f.call)).size
                     }
-                    onClick={() => jump(q.node, q.call, q.index, q.description)}
+                    onClick={() =>
+                      jump(
+                        q.node,
+                        q.call,
+                        q.index,
+                        trained && q.checkpointDescription
+                          ? q.checkpointDescription
+                          : q.description,
+                      )
+                    }
                   >
                     {q.title}
                     <ArrowRight size={11} />
@@ -648,19 +711,38 @@ export function NumericalWorkbench({
           )}
         </aside>
         <main className="numerical-stage">
+          {trained && (
+            <div className="trained-text" aria-label="Trained model text">
+              <div>
+                <span className="eyebrow">PROMPT · CHECKPOINT TOKENIZER</span>
+                <p>{trace.tokenization?.prompt || <em>Beginning of sequence</em>}</p>
+              </div>
+              <div>
+                <span className="eyebrow">COMPLETION · CONFIRMED AT THIS STEP</span>
+                <p>
+                  {trained.tokenizer
+                    .decode(frame.confirmed.map((p) => Number(p.id.slice(1))))
+                    .slice(trained.tokenizer.decode(trace.settings.inputIds).length) || (
+                    <em>Waiting for generated tokens…</em>
+                  )}
+                </p>
+              </div>
+            </div>
+          )}
           <div className="numerical-stream">
             <div>
               <span className="eyebrow">INPUT IDS</span>
               <div>
-                {session.settings.inputIds.map((id, i) => (
-                  <label key={i}>
+                {trace.settings.inputIds.map((id, i) => (
+                  <label key={i} title={trained?.tokenizer.piece(id)}>
                     <small>p{i}</small>
                     <input
                       aria-label={`Numerical input token ${i}`}
                       type="number"
                       min={0}
-                      max={255}
+                      max={trace.config.vocabSize - 1}
                       value={id}
+                      readOnly={Boolean(trained)}
                       onChange={(e) => {
                         const value = Number(e.target.value)
                         if (Number.isInteger(value) && value >= 0 && value < 256)
@@ -671,33 +753,56 @@ export function NumericalWorkbench({
                           })
                       }}
                     />
+                    {trained && (
+                      <span className="trained-token-piece">
+                        {trained.tokenizer.piece(id).replaceAll(' ', '␠').replaceAll('\n', '↵')}
+                      </span>
+                    )}
                   </label>
                 ))}
-                <button
-                  aria-label="Add numerical input token"
-                  disabled={session.settings.inputIds.length === 8}
-                  onClick={() => changeSettings({ inputIds: [...session.settings.inputIds, 11] })}
-                >
-                  +
-                </button>
-                <button
-                  aria-label="Remove numerical input token"
-                  disabled={session.settings.inputIds.length === 1}
-                  onClick={() =>
-                    changeSettings({ inputIds: session.settings.inputIds.slice(0, -1) })
-                  }
-                >
-                  −
-                </button>
+                {!trained && (
+                  <>
+                    <button
+                      aria-label="Add numerical input token"
+                      disabled={session.settings.inputIds.length === 8}
+                      onClick={() =>
+                        changeSettings({ inputIds: [...session.settings.inputIds, 11] })
+                      }
+                    >
+                      +
+                    </button>
+                    <button
+                      aria-label="Remove numerical input token"
+                      disabled={session.settings.inputIds.length === 1}
+                      onClick={() =>
+                        changeSettings({ inputIds: session.settings.inputIds.slice(0, -1) })
+                      }
+                    >
+                      −
+                    </button>
+                  </>
+                )}
               </div>
             </div>
             <ArrowRight size={17} />
             <div>
               <span className="eyebrow">CONFIRMED OUTPUT</span>
               <div>
-                {frame.confirmed.slice(session.settings.inputIds.length).map((p, i) => (
-                  <span className="numerical-output-token" key={i}>
+                {frame.confirmed.slice(trace.settings.inputIds.length).map((p, i) => (
+                  <span
+                    className="numerical-output-token"
+                    key={i}
+                    title={trained?.tokenizer.piece(Number(p.id.slice(1)))}
+                  >
                     {p.id}
+                    {trained && (
+                      <span className="trained-token-piece">
+                        {trained.tokenizer
+                          .piece(Number(p.id.slice(1)))
+                          .replaceAll(' ', '␠')
+                          .replaceAll('\n', '↵')}
+                      </span>
+                    )}
                     <small>out {i}</small>
                   </span>
                 ))}
@@ -849,14 +954,16 @@ export function NumericalWorkbench({
             />
             <div>
               <small>Click any node or connection to inspect its available tensors.</small>
-              <button
-                onClick={() => {
-                  update({ pinned: structuredClone(session.settings) })
-                  notify('Pinned this run as the comparison baseline.')
-                }}
-              >
-                Pin baseline
-              </button>
+              {!trained && (
+                <button
+                  onClick={() => {
+                    update({ pinned: structuredClone(session.settings) })
+                    notify('Pinned this run as the comparison baseline.')
+                  }}
+                >
+                  Pin baseline
+                </button>
+              )}
               {baseline && (
                 <button onClick={() => update({ pinned: undefined })}>Clear baseline</button>
               )}
@@ -1032,6 +1139,7 @@ export function NumericalWorkbench({
                           tensor={tensor}
                           index={currentCell.index}
                           onSelect={(index) => setCell({ tensor: tensor.id, index })}
+                          piece={trained?.tokenizer.piece.bind(trained.tokenizer)}
                         />
                       )}
                       <CellCalculation
@@ -1056,8 +1164,7 @@ export function NumericalWorkbench({
                     </>
                   ) : (
                     <p className="numeric-empty">
-                      Choose an operation or tensor. The run has no trained language knowledge; it
-                      makes the arithmetic inspectable.
+                      Choose an operation or tensor to inspect its actual values and arithmetic.
                     </p>
                   )}
                 </>
@@ -1074,10 +1181,12 @@ function ProbabilityStrip({
   tensor,
   index,
   onSelect,
+  piece,
 }: {
   tensor: NumericTensor
   index: number
   onSelect: (index: number) => void
+  piece?: (id: number) => string
 }) {
   const width = tensor.shape.at(-1)!,
     row = Math.floor(index / width),
@@ -1092,7 +1201,10 @@ function ProbabilityStrip({
       <span className="eyebrow">VOCABULARY · TOP 8 OF {width}</span>
       {top.map((t) => (
         <button key={t.id} onClick={() => onSelect(row * width + t.id)}>
-          <span>#{t.id}</span>
+          <span title={piece?.(t.id)}>
+            #{t.id}
+            {piece ? ` · ${piece(t.id)}` : ''}
+          </span>
           <i style={{ width: `${(t.p / max) * 100}%` }} />
           <b>{valueLabel(t.p * 100, 3)}%</b>
         </button>

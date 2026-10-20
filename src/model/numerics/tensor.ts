@@ -3,6 +3,16 @@
  * This is a reference implementation, not a reproduction of a GPU kernel. */
 export type Recipe =
   | { op: 'parameter'; seed: number }
+  | {
+      op: 'checkpoint'
+      id: string
+      name: string
+      revision: string
+      sha256: string
+      tokenizerSha256: string
+      source: string
+      tiedTo?: string
+    }
   | { op: 'input' }
   | { op: 'embedding'; table: string; tokens: number[] }
   | { op: 'matmul'; a: string; b: string }

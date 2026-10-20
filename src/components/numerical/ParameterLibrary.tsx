@@ -12,7 +12,10 @@ export function ParameterLibrary({
 }) {
   const [query, setQuery] = useState(''),
     parameters = Object.values(trace.tensors).filter((t) => t.role === 'parameter'),
-    count = parameters.reduce((n, t) => n + t.data.length, 0),
+    count = parameters.reduce(
+      (n, t) => n + (t.recipe.op === 'checkpoint' && t.recipe.tiedTo ? 0 : t.data.length),
+      0,
+    ),
     bytes = parameters.reduce((n, t) => n + t.data.byteLength, 0)
   return (
     <details className="parameter-library">
@@ -24,8 +27,10 @@ export function ParameterLibrary({
           {count.toLocaleString()} values · {formatBytes(bytes)}
         </strong>
         <br />
-        FP32 parameter payload. Seeded, untrained and fixed across decoder calls. Allocator and
-        trace-history overhead excluded.
+        {trace.checkpoint
+          ? 'Trained checkpoint weights, fixed across decoder calls. Unique values exclude the tied vocabulary alias; displayed bytes include its materialized transpose.'
+          : 'FP32 parameter payload. Seeded, untrained and fixed across decoder calls.'}{' '}
+        Allocator and trace-history overhead excluded.
       </p>
       <input
         aria-label="Find a numerical parameter"

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { documentSchema, type ModelDocument, type ModelGraph } from '../schema'
+import { documentSchema, type ModelDocument, type ModelGraph, type ModelConfig } from '../schema'
 import { expandWholeModel, INSTANCE_KEY } from '../whole-model'
 import {
   defaultNumericalSettings,
@@ -74,11 +74,12 @@ export function numericalGraph(
   doc: ModelDocument,
   settings: NumericalSettings,
   layout: ModelGraph['layout'],
+  checkpointConfig?: ModelConfig,
 ): ModelGraph {
   const recipe = doc.graphs.find((g) => g.id === 'whole-model-heads')
   if (!recipe) throw new Error('The numerical lab requires the foundations split-head recipe.')
   const full = expandWholeModel(
-    { ...doc, config: teachingConfig(settings) },
+    { ...doc, config: checkpointConfig ?? teachingConfig(settings) },
     { ...recipe, id: 'numerical-lab', layout },
   )
   const keep = new Set([
@@ -204,6 +205,45 @@ export function numericalGraph(
       shape: ['B', '1'],
       kind: 'state',
     })
+  if (checkpointConfig) {
+    for (const node of nodes) {
+      node.sourceIds = [...new Set([...node.sourceIds, 'stories260k', 'llama2c'])]
+      node.notes = node.notes.filter(
+        (note) => !/synthetic|untrained|illustrative|scripted/i.test(note),
+      )
+      if (node.id === 'tokens.ids')
+        Object.assign(node, {
+          subtitle: 'Matching checkpoint tokenizer',
+          description:
+            'Actual IDs produced by the checkpoint’s scored-BPE tokenizer, including BOS. Token pieces are shown beside the input.',
+        })
+      if (node.id === 'tokens.lookup')
+        Object.assign(node, {
+          subtitle: 'Trained E[V,D] rows',
+          description:
+            'Select trained embedding rows from the verified Stories260K checkpoint. The same learned matrix is reused transposed for vocabulary projection.',
+        })
+      if (node.id === 'output.lmhead')
+        Object.assign(node, {
+          subtitle: 'Tied embedding transpose',
+          description:
+            'Compute logits with the transposed token-embedding matrix. It is the same learned weight matrix, not an independent classifier.',
+          equation: String.raw`Z=H E^\top`,
+        })
+      if (node.id === 'generation.decode')
+        Object.assign(node, {
+          title: 'Decoded completion',
+          subtitle: 'Matching tokenizer · UTF-8',
+          description:
+            'The checkpoint tokenizer decodes confirmed vocabulary IDs. The next decoder call consumes IDs directly, not re-tokenized text.',
+        })
+    }
+    for (const edge of edges)
+      edge.description = edge.description.replace(
+        'This teaching model has untrained parameters.',
+        'This run uses verified trained checkpoint parameters.',
+      )
+  }
   return {
     ...full,
     title: 'The mathematics, alive.',

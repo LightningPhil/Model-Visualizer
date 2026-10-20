@@ -11,6 +11,7 @@
 | `src/model/group-layout.ts`                              | Stage-local layout/routing plus fixed-obstacle inter-stage routing for expanded models                        |
 | `src/model/simulation.ts`                                | Renderer-neutral graphical execution trace, causal verification scenarios and KV-state accounting             |
 | `src/model/numerics/`                                    | Local numerical reference operations, actual tensors and scalar provenance; independent laboratory sessions   |
+| `src/model/checkpoints/`, `examples/*.checkpoint.json`   | Pinned trained manifests, binary/tokenizer validation, local inference worker and separate studies            |
 | `src/components/numerical/`                              | Numerical playback, tensor slicing, operation diagrams, head comparisons and experiment notebook              |
 | `src/components/SimulationPanel.tsx`, `useSimulation.ts` | Packet/state visualization, playback, timeline, step detail and camera follow                                 |
 | `src/model/layout.ts`                                    | ELK arrangements scored using the complete routed diagram                                                     |
@@ -76,11 +77,15 @@ The full-prefix logical KV size is `2 × L × B × Hkv × S × Dh × scalarBytes
 
 **Attention architecture:** MHA/GQA/MQA use the same dense logical state representation. MLA requires a new cache representation and configuration profile, not relabelled GQA. Full, fixed-anchor sparse and sliding-window policies now have explicit masks, absolute positions and retention accounting in `attention.ts`. Other sparse/linear patterns still require their own state semantics. See [attention and cache](attention-and-cache.md).
 
-**Actual traces:** the generic execution adapter now supports graphical and local numerical reference traces with explicit provenance and stable component IDs. The separate tensor laboratory executes a small, seeded **untrained** foundations profile, records actual arrays and absolute position maps, and explains individual cells through operation recipes. It reuses authored architecture templates and owns separate experiment geometry/settings in a versioned extension. It does not execute arbitrary imported models. A measured/checkpoint adapter still needs a validated external schema keyed by model identity, layer, head, step and tensor name, with dtype, positions and sampling/downsampling metadata. Keep large arrays in separate trace artifacts. See [the numerical laboratory](numerical-laboratory.md).
+**Actual traces:** the generic execution adapter now supports graphical and local numerical reference traces with explicit provenance and stable component IDs. The separate tensor laboratory executes a small, seeded **untrained** foundations profile, records actual arrays and absolute position maps, and explains individual cells through operation recipes. It reuses authored architecture templates and owns separate experiment geometry/settings in a versioned extension. It does not execute arbitrary imported models. External measured-trace import still needs a validated schema keyed by model identity, layer, head, step and tensor name, with dtype, positions and sampling/downsampling metadata. Keep large arrays in separate trace artifacts. See [the numerical laboratory](numerical-laboratory.md).
 
 **MoE:** add router, scores, top-k selection, per-expert FFNs, dispatch/combine and optional shared experts. Distinguish total parameters from activated parameters. A static branching diagram alone is insufficient to demonstrate token-specific routing.
 
 **Editing:** an agent can author arbitrary graph bifurcations in JSON now. Layout undo is implemented. A general visual graph editor, tensor typing between ports, general editing history and comparison of model versions are future work.
+
+## Local trained checkpoint
+
+The separate **Local trained model** entry loads bundled Stories260K weights and its matching tokenizer only on request. A worker verifies pinned SHA-256 hashes and runs the numerical primitives with learned parameters. Its actual configuration drives all five expanded layers and eight query heads. The shared workbench accepts this trace without substituting seeded tensors. Tied classifier weights are identified explicitly. Decoding, generation progress, separate geometry/notebook storage and trace export retain checkpoint and arithmetic provenance. This supports one validated checkpoint profile, not arbitrary architectures or model services. See [local trained-model inspection](local-trained-model.md).
 
 ## Verification
 

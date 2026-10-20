@@ -61,6 +61,19 @@ export function explainCell(
               : [],
   }
   const cell = (t: string, i: number) => ({ tensor: t, index: i })
+  if (r.op === 'checkpoint')
+    return {
+      ...proof,
+      title: r.tiedTo ? 'A tied checkpoint parameter' : 'A trained checkpoint parameter',
+      tex: r.tiedTo ? String.raw`W_{\mathrm{vocab}}=E^\top` : String.raw`w_i\in\mathbb R`,
+      explanation: `This exact Float32 value was read from ${r.name}. Linear matrices are transposed from the file’s output-by-input convention into the diagram’s row-vector convention. No random weights are substituted.${r.tiedTo ? ' This projection reuses the embedding weights, transposed; it is not an independent learned matrix.' : ''}`,
+      details: [
+        { label: 'Revision', value: r.revision },
+        { label: 'Checkpoint SHA-256', value: r.sha256 },
+        { label: 'Storage', value: 'Float32' },
+      ],
+      sourceIds: ['stories260k', 'llama2c'],
+    }
   if (r.op === 'parameter')
     return {
       ...proof,
@@ -85,7 +98,7 @@ export function explainCell(
           : String.raw`K,V\in\mathbb R^{B\times H_{kv}\times 0\times d_h}`,
       explanation:
         tensor.role === 'input'
-          ? 'Token indices select embedding rows. They are opaque IDs here, without a language tokenizer.'
+          ? 'Token indices select embedding rows. The run’s provenance identifies whether these IDs came from a checkpoint tokenizer or the opaque-ID teaching example.'
           : 'The initial per-layer K/V prefix has zero positions. No features are stored before the first forward pass.',
     }
   if (r.op === 'matmul') {
@@ -146,8 +159,7 @@ export function explainCell(
       ...proof,
       title: 'Normalize one token’s feature scale',
       tex: String.raw`y_j=\gamma_j\,x_j/\sqrt{\frac1D\sum_kx_k^2+\epsilon}`,
-      explanation:
-        'RMSNorm uses the root mean square, with no mean subtraction. Gain is a learned per-feature parameter (seeded, untrained here).',
+      explanation: `RMSNorm uses the root mean square, with no mean subtraction. Gain is a per-feature parameter (${gain.recipe.op === 'checkpoint' ? 'learned in the checkpoint' : 'seeded and untrained in this example'}).`,
       details: [
         { label: 'Mean of squares', value: mean },
         { label: 'Epsilon', value: r.epsilon },

@@ -19,3 +19,10 @@ in its source notices: https://github.com/kieler/elkjs. Its generated worker
 asset retains the upstream license header.
 
 The complete dependency versions are recorded in package-lock.json.
+
+Stories260K checkpoint and tokenizer
+----------------------------------
+Author: Andrej Karpathy. License: MIT.
+Original unmodified weights and tokenizer: https://huggingface.co/karpathy/tinyllamas/tree/0bd21da7698eaf29a0d7de3992de8a46ef624add/stories260K
+Bundled license: models/stories260k/LICENSE
+Configuration, hashes, provenance and reference implementation links: examples/stories260k.checkpoint.json in the source repository.

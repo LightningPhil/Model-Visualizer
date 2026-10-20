@@ -6,6 +6,8 @@ The architecture explorer and graphical MTP simulator remain available. The nume
 
 ## Explore one value
 
+For actual trained weights, choose **Local trained model**. It runs the pinned Stories260K checkpoint and matching tokenizer in a worker, reusing this canvas and microscope with its own saved session. See [the trained profile and verification](local-trained-model.md).
+
 1. Choose a question, a chapter, a decoder call or an individual operation. The graph follows the active component when **Follow flow** is enabled.
    In the architecture inspector, **Try a numerical example** opens the corresponding foundations operation directly. Large-model layer/head numbers map to the small profile; the panel labels it as a separate untrained example.
 2. Click a component to inspect its recorded outputs, inputs and parameter matrices. Click a connection to inspect the available source payload and destination operands. Its architecture explanation and primary sources remain accessible.
@@ -83,7 +85,7 @@ The numerical graph owns independent geometry. It uses the same obstacle-aware r
 
 The runtime graph and primary references come from the bundled authored **foundations** document, even when a different or edited architecture is open. The current workspace owns only the experiment extension and theme. Editing or importing architecture content does not silently change the numerical runtime's mathematics or substitute an imported source for its references.
 
-A trained local runtime or imported measured trace should supply an explicit model identity, architecture compatibility, dtype, absolute positions, parameter provenance and sampling policy. It must distinguish logical tensors from kernel intermediates and physical storage. Large arrays should stay in separate trace artifacts. Network inference would additionally need a user-requested design and explicit visible controls; there is no service integration here.
+Additional trained local runtimes or imported measured traces should supply an explicit model identity, architecture compatibility, dtype, absolute positions, parameter provenance and sampling policy. It must distinguish logical tensors from kernel intermediates and physical storage. Large arrays should stay in separate trace artifacts. Network inference would additionally need a user-requested design and explicit visible controls; there is no service integration here.
 
 ## Primary references
 

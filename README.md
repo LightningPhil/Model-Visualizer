@@ -13,7 +13,7 @@ npm ci
 npm run dev
 ```
 
-Open the Local URL printed by Vite. The app runs entirely in the browser, with bundled fonts, equations and research references. There are no API keys, accounts, model downloads or inference services.
+Open the Local URL printed by Vite. The app runs entirely in the browser, with bundled fonts, equations, research references and the small trained checkpoint. Model assets load on request from the app's own files. There are no API keys, accounts or inference services.
 
 ```sh
 npm run build       # TypeScript check and production build
@@ -29,6 +29,7 @@ The browser tests launch their own Vite server on port 5200. Set `PLAYWRIGHT_PRE
 - **Whole model:** one expanded canvas with 252 components and 358 connections in the default teaching configuration. Every main decoder layer, query-head result and KV-head slice appears explicitly, alongside tokenization, feed-forward paths, output and the generation loop. Jump between stages, zoom, drag, auto-layout and save the complete map.
 - **Graphical simulation:** abstract packets flow through the model with play/pause, reversible steps, a timeline and camera follow. Switch ordinary decoding or two MTP depths; see proposals, causal verification, accepted prefixes, rejected suffixes, KV rollback and committed output. Text input is not required.
 - **Tensor laboratory:** run a small local transformer with seeded, untrained weights. Watch prefill and cached decoding, inspect actual activations, select any matrix cell and follow every product back to its operands. Explore RMSNorm, RoPE rotations, independent attention heads, masks, softmax, SwiGLU and vocabulary selection. Pin experiments for cell comparisons, bookmark operations and save a separate laboratory notebook.
+- **Local trained model:** load the bundled Stories260K checkpoint and its matching tokenizer, generate a short completion in a worker, and inspect its real learned weights, attention and activations in the same flowchart and tensor microscope. No inference service, account or GPU is required. Checkpoint hashes and arithmetic provenance are visible, and trained layouts/notes save separately. [Profile and verification](docs/local-trained-model.md).
 - **Eleven study views:** the original architecture, tokenizer, transformer block, attention, KV cache, feed-forward, output, n-gram memory and MTP views, plus generation/verification and fully split attention heads.
 - **79 authored components:** graph templates and an expansion recipe supply explanations, tensor dimensions, LaTeX and primary sources. Click an edge label to inspect its operation.
 - **Real teaching BPE:** edit the prompt; see UTF-8 bytes, token IDs and every ranked merge. Unicode round-trips losslessly.
@@ -50,7 +51,9 @@ The separate **tensor laboratory** executes a two-layer, width-16 reference mode
 
 ![The numerical laboratory: actual tensors and rotary-position calculations from an untrained reference model](docs/images/numerical-laboratory-dark.png)
 
-MLA, MoE, more advanced sparse patterns, arbitrary tokenizer plugins and real activation traces are researched extension points, not completed inference features. The [research map](docs/research.md) distinguishes their semantics and the work needed to add them.
+The **local trained-model** path runs Karpathy's Stories260K: five width-64 layers, eight query/four KV heads, a 512-token vocabulary and tied embedding/output weights. It captures full causal inference for up to 48 prompt tokens and 16 new IDs, with actual text decoding. It is a small base completion model with limited language quality. Only this pinned trained profile is supported; arbitrary checkpoints and numerical MTP remain future work. [Local model documentation](docs/local-trained-model.md).
+
+MLA, MoE, more advanced sparse patterns, arbitrary tokenizer plugins and external activation-trace import are researched extension points, not completed inference features. The [research map](docs/research.md) distinguishes their semantics and the work needed to add them.
 
 ## Model documents and future development
 

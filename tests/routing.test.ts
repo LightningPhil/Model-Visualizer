@@ -17,6 +17,8 @@ import { clearDrop } from '../src/components/useDiagram'
 import { isWholeModel, expandWholeModel } from '../src/model/whole-model'
 import { numericalGraph } from '../src/model/numerics/session'
 import { defaultNumericalSettings } from '../src/model/numerics/engine'
+import { storiesManifest } from '../src/model/checkpoints/stories'
+import { parseModelConfig } from '../src/model/schema'
 
 let engine: AvoidEngine
 const document = parseDocument(starter)
@@ -26,6 +28,19 @@ beforeAll(async () => {
 })
 
 describe('complete diagram layout', () => {
+  for (const direction of ['RIGHT', 'DOWN'] as const)
+    it(`trained Stories260K ${direction}: all 354 components and links remain inspectable`, async () => {
+      const graph = numericalGraph(
+        document,
+        defaultNumericalSettings,
+        { direction, positions: {} },
+        parseModelConfig(storiesManifest.config),
+      )
+      const plan = await planLayout(engine, graph, direction)
+      expect(graph.nodes).toHaveLength(354)
+      expect(routingProblems(graph, plan.positions, plan.routing)).toEqual([])
+      expect(Object.keys(plan.routing.edges)).toHaveLength(graph.edges.length)
+    }, 90000)
   for (const attention of ['MHA', 'GQA', 'MQA'] as const)
     for (const direction of ['RIGHT', 'DOWN'] as const)
       it(`numerical ${attention} ${direction}: every link and annotation stays clear`, async () => {

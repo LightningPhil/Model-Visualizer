@@ -76,8 +76,32 @@ export type NumericalTrace = Omit<SimulationTrace, 'frames'> & {
   frames: NumericalFrame[]
   outputIds: number[]
   arithmetic: string
+  checkpoint?: CheckpointWeights['provenance']
+  tokenization?: {
+    prompt: string
+    inputIds: number[]
+    pieces: string[]
+    tokenizerRevision: string
+    output: string
+  }
 }
-type Options = SimulationOptions & { settings: NumericalSettings }
+export type CheckpointWeights = {
+  config: ModelConfig
+  parameters: Record<string, Float32Array>
+  provenance: {
+    id: string
+    name: string
+    revision: string
+    sha256: string
+    tokenizerSha256: string
+    source: string
+  }
+}
+type Options = SimulationOptions & {
+  settings: NumericalSettings
+  checkpoint?: CheckpointWeights
+  onToken?: (ids: number[]) => void
+}
 function random(seed: number) {
   let x = seed >>> 0
   return () => {
@@ -98,6 +122,12 @@ export const numericalAdapter: ExecutionAdapter<Options, NumericalTrace> = {
   run(inputConfig, options) {
     const config = parseModelConfig(inputConfig)
     const settings = structuredClone(options.settings)
+    const checkpoint = options.checkpoint
+    if (
+      checkpoint &&
+      JSON.stringify(config) !== JSON.stringify(parseModelConfig(checkpoint.config))
+    )
+      throw new Error('Checkpoint architecture and execution configuration differ.')
     const signature = (policy: CachePolicy) =>
       JSON.stringify([
         policy.mode,
@@ -115,17 +145,17 @@ export const numericalAdapter: ExecutionAdapter<Options, NumericalTrace> = {
       )
     if (
       settings.inputIds.length < 1 ||
-      settings.inputIds.length > 8 ||
+      settings.inputIds.length > (checkpoint ? 48 : 8) ||
       settings.inputIds.some((t) => !Number.isInteger(t) || t < 0 || t >= config.vocabSize)
     )
-      throw new Error('Choose 1–8 valid input token IDs.')
+      throw new Error(`Choose 1–${checkpoint ? 48 : 8} valid input token IDs.`)
     if (
       !Number.isInteger(settings.seed) ||
       settings.seed < 0 ||
       settings.seed > 2147483647 ||
       !Number.isInteger(settings.generate) ||
       settings.generate < 1 ||
-      settings.generate > 8 ||
+      settings.generate > (checkpoint ? 16 : 8) ||
       settings.temperature < 0.1 ||
       settings.temperature > 3
     )
@@ -134,10 +164,10 @@ export const numericalAdapter: ExecutionAdapter<Options, NumericalTrace> = {
       config.dModel !== config.nQueryHeads * config.headDim ||
       config.nQueryHeads % config.nKvHeads ||
       config.headDim % 2 ||
-      config.nLayers > 4 ||
-      config.dModel > 32 ||
+      config.nLayers > (checkpoint ? 5 : 4) ||
+      config.dModel > (checkpoint ? 64 : 32) ||
       config.vocabSize > 512 ||
-      config.ffnDim > 64 ||
+      config.ffnDim > (checkpoint ? 172 : 64) ||
       config.nQueryHeads > 8 ||
       config.dtypeBytes !== 4 ||
       settings.attention !== config.attention ||
@@ -145,6 +175,8 @@ export const numericalAdapter: ExecutionAdapter<Options, NumericalTrace> = {
       !Number.isFinite(settings.temperature)
     )
       throw new Error('Numerical execution is limited to the small teaching profile.')
+    if (settings.inputIds.length + settings.generate > config.contextLength)
+      throw new Error('The requested run exceeds the checkpoint context capacity.')
     const frames: NumericalFrame[] = [],
       tensors: Record<string, NumericTensor> = {}
     const cache = Array.from({ length: config.nLayers }, (_, l) => ({
@@ -185,6 +217,27 @@ export const numericalAdapter: ExecutionAdapter<Options, NumericalTrace> = {
       return t
     }
     const parameter = (name: string, shape: number[], axes: string[], gain = false) => {
+      if (checkpoint) {
+        const values = checkpoint.parameters[name]
+        if (!values || values.length !== shape.reduce((a, b) => a * b, 1))
+          throw new Error(`Missing or incompatible checkpoint parameter: ${name}`)
+        return put(
+          makeTensor(
+            `weights/${name}`,
+            name,
+            shape,
+            axes,
+            values,
+            {
+              op: 'checkpoint',
+              ...checkpoint.provenance,
+              ...(name === 'vocabulary projection' ? { tiedTo: 'weights/token embeddings' } : {}),
+            },
+            'parameter',
+          ),
+          -1,
+        )
+      }
       const rng = random(namedSeed(settings.seed, name)),
         count = shape.reduce((a, b) => a * b, 1),
         scale = Math.sqrt(3 / shape[0]) * 0.7
@@ -285,7 +338,9 @@ export const numericalAdapter: ExecutionAdapter<Options, NumericalTrace> = {
       emit(
         ['tokens.ids'],
         start === 0 ? 'Start with token IDs' : 'Feed the selected ID back',
-        'These are opaque vocabulary indices for the small numerical model. No tokenizer or language service is invoked.',
+        checkpoint
+          ? 'IDs from the checkpoint’s matching tokenizer select trained embedding rows. Inference runs locally; no prompt is sent to a service.'
+          : 'These are opaque vocabulary indices for the small numerical model. No tokenizer or language service is invoked.',
         [],
         [input],
         undefined,
@@ -307,7 +362,9 @@ export const numericalAdapter: ExecutionAdapter<Options, NumericalTrace> = {
       emit(
         ['tokens.lookup'],
         'Select embedding rows',
-        'Each ID selects one row of E[V,D]. The vectors are actual seeded FP32 values, with no training.',
+        checkpoint
+          ? 'Each token ID selects its exact trained Float32 row from the verified checkpoint embedding matrix.'
+          : 'Each ID selects one row of E[V,D]. The vectors are actual seeded FP32 values, with no training.',
         [input, embedding],
         [x],
       )
@@ -633,7 +690,7 @@ export const numericalAdapter: ExecutionAdapter<Options, NumericalTrace> = {
       emit(
         ['output.lmhead'],
         'Project into the vocabulary',
-        'Each row contains 256 real, untrained-model logits. Only the final query row chooses the next token.',
+        `Each row contains ${config.vocabSize} computed logits. Only the final query row chooses the next token.${checkpoint ? ' The vocabulary projection is tied to the transposed embedding matrix.' : ' Parameters are untrained.'}`,
         [normalized, vocab],
         [logits],
         undefined,
@@ -681,9 +738,13 @@ export const numericalAdapter: ExecutionAdapter<Options, NumericalTrace> = {
       emit(
         ['output.sample', 'generation.next'],
         'Select the next token',
-        settings.sampling === 'greedy'
-          ? 'Choose the highest-probability token in the last query row. This untrained model does not generate meaningful language.'
-          : 'Draw from the last row using a reproducible seeded random stream. These are real probabilities from an untrained model.',
+        checkpoint
+          ? settings.sampling === 'greedy'
+            ? 'Choose the highest-probability token from the last query row, using the trained checkpoint.'
+            : 'Sample from the trained model’s last-row probabilities using a reproducible random stream.'
+          : settings.sampling === 'greedy'
+            ? 'Choose the highest-probability token in the last query row. This untrained model does not generate meaningful language.'
+            : 'Draw from the last row using a reproducible seeded random stream. These are real probabilities from an untrained model.',
         [logits],
         [probabilities, choice],
         undefined,
@@ -701,6 +762,8 @@ export const numericalAdapter: ExecutionAdapter<Options, NumericalTrace> = {
         undefined,
         true,
       )
+      options.onToken?.(confirmed.slice(settings.inputIds.length))
+      if (checkpoint && (selected === 1 || selected === 2)) break
       if (generated + 1 < settings.generate) {
         phase = 'decode'
         emit(
@@ -720,7 +783,9 @@ export const numericalAdapter: ExecutionAdapter<Options, NumericalTrace> = {
     emit(
       ['generation.decode'],
       'Numerical run complete',
-      'Every displayed value came from the local reference operations and seeded, untrained weights. The last selected token may remain uncached.',
+      checkpoint
+        ? 'Every displayed value was computed locally from the verified trained checkpoint. Generation stops at BOS/EOS or the requested budget. The last selected ID may remain uncached.'
+        : 'Every displayed value came from the local reference operations and seeded, untrained weights. The last selected token may remain uncached.',
       [],
       [tensors[`call${call}/choice`]],
       undefined,
@@ -730,18 +795,26 @@ export const numericalAdapter: ExecutionAdapter<Options, NumericalTrace> = {
       version: 1,
       config,
       settings,
-      options: structuredClone(options),
+      options: {
+        promptTokens: options.promptTokens,
+        newTokens: options.newTokens,
+        mtp: options.mtp,
+        scenario: options.scenario,
+        splitHeads: options.splitHeads,
+      },
       provenance: {
         kind: 'numerical',
-        modelRevision: 'untrained-reference-v1',
-        description:
-          'Deterministic local reference transformer with seeded, untrained parameters. Not a trained checkpoint.',
+        modelRevision: checkpoint?.provenance.revision ?? 'untrained-reference-v1',
+        description: checkpoint
+          ? `Trained ${checkpoint.provenance.name}; checkpoint SHA-256 ${checkpoint.provenance.sha256}. Local TypeScript reference arithmetic.`
+          : 'Deterministic local reference transformer with seeded, untrained parameters. Not a trained checkpoint.',
       },
       arithmetic:
         'Float32 tensor storage; JavaScript Number accumulation; each operation output rounds to Float32. No GPU-kernel or BF16 equivalence is claimed.',
       frames,
       tensors,
       outputIds: confirmed.slice(settings.inputIds.length),
+      ...(checkpoint ? { checkpoint: checkpoint.provenance } : {}),
     }
   },
 }

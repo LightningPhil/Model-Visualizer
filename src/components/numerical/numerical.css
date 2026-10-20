@@ -1,3 +1,223 @@
+.local-model-modal {
+  width: min(1120px, calc(100vw - 32px));
+  max-width: 1120px;
+}
+.trained-intro {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 54px;
+  padding: 28px 40px 40px;
+}
+.trained-intro > div:first-child {
+  padding-top: 20px;
+}
+.trained-intro > div:first-child > svg {
+  color: var(--cyan);
+  margin-bottom: 30px;
+}
+.trained-intro .eyebrow {
+  display: block;
+  color: var(--violet);
+  font-size: 9px;
+}
+.trained-intro h2 {
+  font-size: 42px;
+  letter-spacing: -1.8px;
+  line-height: 1.16;
+  margin: 20px 0;
+}
+.trained-intro p {
+  color: var(--secondary);
+  font-size: 13px;
+  line-height: 1.9;
+}
+.trained-intro p svg {
+  color: var(--cyan);
+  vertical-align: middle;
+  margin-right: 5px;
+}
+.trained-controls {
+  display: grid;
+  gap: 13px;
+  min-width: 0;
+}
+.trained-controls h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 22px;
+}
+.trained-controls p {
+  margin: 0;
+  color: var(--secondary);
+  font-size: 11px;
+  line-height: 1.8;
+}
+.trained-controls label {
+  display: grid;
+  gap: 7px;
+  color: var(--secondary);
+  font-size: 11px;
+}
+.trained-controls textarea,
+.trained-controls input,
+.trained-controls select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 9px 10px;
+  font: 12px var(--mono);
+}
+.trained-controls textarea {
+  min-height: 90px;
+  resize: vertical;
+  line-height: 1.7;
+}
+.trained-controls input[type='range'] {
+  padding: 0;
+  accent-color: var(--cyan);
+}
+.trained-controls .button {
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+}
+.trained-controls details {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+.trained-controls summary {
+  font-size: 11px;
+  color: var(--cyan);
+  cursor: pointer;
+}
+.trained-controls details p {
+  margin: 12px 0;
+}
+.trained-controls code {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font: 9px var(--mono);
+  line-height: 1.8;
+}
+.trained-controls a {
+  display: block;
+  margin-top: 12px;
+  color: var(--cyan);
+  font-size: 11px;
+}
+.trained-controls .trained-error {
+  border: 1px solid var(--amber);
+  padding: 10px;
+  border-radius: 4px;
+  color: var(--amber);
+}
+.trained-controls [role='status'] {
+  padding: 10px;
+  background: var(--cyan-bg);
+  border: 1px solid var(--cyan);
+  color: var(--cyan);
+  border-radius: 4px;
+}
+.trained-text {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 15px 20px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(110deg, var(--cyan-bg), transparent);
+}
+.trained-text .eyebrow {
+  font-size: 7px;
+  color: var(--cyan);
+}
+.trained-text p {
+  margin: 8px 0 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 85px;
+  overflow: auto;
+}
+.trained-text em {
+  font-size: 11px;
+  color: var(--muted);
+}
+.trained-modal .numerical-cache-snapshot {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  align-items: stretch;
+  max-height: 84px;
+}
+.trained-modal .numerical-cache-snapshot > span {
+  align-self: center;
+  flex-shrink: 0;
+}
+.trained-modal .numerical-cache-snapshot > button {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  flex-shrink: 0;
+  width: 195px;
+}
+.trained-modal .numerical-cache-snapshot button > span {
+  overflow-x: auto;
+  max-width: 155px;
+}
+.trained-modal .numerical-cache-snapshot small {
+  grid-column: 1/-1;
+}
+.trained-modal .numerical-cache-snapshot i {
+  flex-shrink: 0;
+}
+.trained-token-piece {
+  font: 8px var(--mono);
+  color: var(--secondary);
+  max-width: 52px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trained-text + .numerical-stream {
+  max-height: 105px;
+  overflow: auto;
+  flex-shrink: 0;
+}
+.proof-details dd {
+  overflow-wrap: anywhere;
+}
+.numeric-probabilities button > span {
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+@media (max-width: 700px) {
+  .trained-intro {
+    grid-template-columns: 1fr;
+    padding: 20px;
+    gap: 22px;
+  }
+  .trained-intro h2 {
+    font-size: 30px;
+  }
+  .trained-intro > div:first-child {
+    padding: 0;
+  }
+  .trained-intro > div:first-child > svg {
+    display: none;
+  }
+  .trained-text {
+    padding: 12px;
+    gap: 10px;
+  }
+}
+
 .operation-sketch {
   margin: 16px 0;
   padding: 12px 10px;
