@@ -55,11 +55,10 @@ test('records draggable positions, restores them, and imports the same graph ID'
   const dragged = await node.getAttribute('style')
   await expect
     .poll(() =>
-      page.evaluate(
-        () =>
-          JSON.parse(localStorage.getItem('model-visualizer.workspace.v1')!).graphs[0].layout
-            .positions.decoder.x,
-      ),
+      page.evaluate(() => {
+        const saved = localStorage.getItem('model-visualizer.workspace.v1')
+        return saved ? JSON.parse(saved).graphs[0].layout.positions.decoder.x : 365
+      }),
     )
     .not.toBe(365)
   await page.reload()
@@ -79,11 +78,10 @@ test('auto-layout works and direction switch keeps nodes distinct', async ({ pag
   await expect(page.getByRole('button', { name: 'Auto-layout', exact: true })).toBeEnabled()
   await expect
     .poll(() =>
-      page.evaluate(
-        () =>
-          JSON.parse(localStorage.getItem('model-visualizer.workspace.v1')!).graphs[0].layout
-            .direction,
-      ),
+      page.evaluate(() => {
+        const saved = localStorage.getItem('model-visualizer.workspace.v1')
+        return saved ? JSON.parse(saved).graphs[0].layout.direction : null
+      }),
     )
     .toBe('DOWN')
   const transforms = await page
