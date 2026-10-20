@@ -102,6 +102,14 @@ test('undo restores authored positions, ports and viewport; JSON reload preserve
   })
   await connectionsReady(page, starter.graphs[0].edges.length)
   const automatic = await transforms()
+  const automaticPositions = await page.locator('.react-flow__node').evaluateAll((nodes) =>
+    Object.fromEntries(
+      nodes.map((node) => {
+        const matrix = new DOMMatrixReadOnly((node as HTMLElement).style.transform)
+        return [node.getAttribute('data-id'), { x: matrix.e, y: matrix.f }]
+      }),
+    ),
+  )
   const routes = await page
     .locator('.routed-connection')
     .evaluateAll((nodes) => nodes.map((n) => n.getAttribute('data-route-points')))
@@ -109,11 +117,11 @@ test('undo restores authored positions, ports and viewport; JSON reload preserve
     .poll(() =>
       page.evaluate(
         () =>
-          JSON.parse(localStorage.getItem('model-visualizer.workspace.v1')!).graphs[0].layout
-            .positions,
+          JSON.parse(localStorage.getItem('model-visualizer.workspace.v1') ?? 'null')?.graphs[0]
+            .layout.positions,
       ),
     )
-    .not.toEqual(starter.graphs[0].layout.positions)
+    .toEqual(automaticPositions)
   await page.reload()
   await connectionsReady(page, starter.graphs[0].edges.length)
   expect(await transforms()).toEqual(automatic)
