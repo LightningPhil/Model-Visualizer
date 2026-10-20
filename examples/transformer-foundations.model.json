@@ -1,0 +1,2087 @@
+{
+  "$schema": "./model.schema.json",
+  "schemaVersion": "1.0",
+  "id": "transformer-foundations",
+  "name": "Transformer foundations",
+  "description": "A small, inspectable decoder-only transformer. An educational architecture, not a trained checkpoint.",
+  "documentation": "Start at the architecture overview, then open a block or inspect an edge. Symbolic axes are B (batch), T (current query positions), S (visible key positions), D (hidden width), Hq (query heads), Hkv (KV heads), Dh (features per head), F (FFN width), V (vocabulary) and L (layers). The workbench computes exact dimensions and a real demo BPE trace. Attention probabilities are synthetic examples; no trained model weights are loaded. Optional memory and MTP views illustrate separate architecture extensions. Model definitions, equations, citations, notes, positions and viewports travel together in this versioned JSON document.",
+  "config": {
+    "dModel": 512,
+    "nLayers": 6,
+    "nQueryHeads": 8,
+    "nKvHeads": 2,
+    "headDim": 64,
+    "ffnDim": 1536,
+    "vocabSize": 393,
+    "contextLength": 2048,
+    "dtypeBytes": 2,
+    "attention": "GQA"
+  },
+  "tokenizer": {
+    "adapter": "byte-bpe-demo-v1",
+    "description": "Deterministic byte-level BPE with a small explicit vocabulary. No pre-tokenization, Unicode normalization or special tokens. See src/model/tokenizer.ts."
+  },
+  "sources": [
+    {
+      "id": "attention",
+      "title": "Attention Is All You Need",
+      "url": "https://arxiv.org/abs/1706.03762",
+      "note": "Scaled dot-product attention, multi-head attention, residual connections and the transformer foundation."
+    },
+    {
+      "id": "bpe",
+      "title": "tiktoken · educational BPE implementation",
+      "url": "https://github.com/openai/tiktoken/blob/main/tiktoken/_educational.py",
+      "note": "A reference for byte-level vocabulary-ranked BPE. Our teaching vocabulary and implementation are independent."
+    },
+    {
+      "id": "gqa",
+      "title": "GQA: Training Generalized Multi-Query Transformer Models",
+      "url": "https://arxiv.org/abs/2305.13245",
+      "note": "The relationship between query heads, shared KV heads, MHA and MQA."
+    },
+    {
+      "id": "rope",
+      "title": "RoFormer: Enhanced Transformer with Rotary Position Embedding",
+      "url": "https://arxiv.org/abs/2104.09864",
+      "note": "Position-dependent rotations of query and key feature pairs."
+    },
+    {
+      "id": "rms",
+      "title": "Root Mean Square Layer Normalization",
+      "url": "https://arxiv.org/abs/1910.07467",
+      "note": "RMS normalization without mean centering."
+    },
+    {
+      "id": "swiglu",
+      "title": "GLU Variants Improve Transformer",
+      "url": "https://arxiv.org/abs/2002.05202",
+      "note": "Gated feed-forward variants including SwiGLU."
+    },
+    {
+      "id": "flash",
+      "title": "FlashAttention: Fast and Memory-Efficient Exact Attention",
+      "url": "https://arxiv.org/abs/2205.14135",
+      "note": "An exact attention kernel with IO-aware tiling; not a different head-sharing scheme."
+    },
+    {
+      "id": "paged",
+      "title": "Efficient Memory Management for LLM Serving with PagedAttention",
+      "url": "https://arxiv.org/abs/2309.06180",
+      "note": "Physical KV memory management, separate from logical tensor axes."
+    },
+    {
+      "id": "deepseek",
+      "title": "DeepSeek-V3 Technical Report",
+      "url": "https://arxiv.org/html/2412.19437v2",
+      "note": "Reference for sequential MTP and the distinct latent cache representation used by MLA."
+    },
+    {
+      "id": "mtp",
+      "title": "Better & Faster LLMs via Multi-token Prediction",
+      "url": "https://arxiv.org/abs/2404.19737",
+      "note": "An independent-head multi-token prediction design; distinguish it from sequential MTP."
+    },
+    {
+      "id": "engram",
+      "title": "Conditional Memory via Scalable Lookup",
+      "url": "https://arxiv.org/html/2601.07372v1",
+      "note": "Engram conditional memory, hashed n-gram retrieval and context-aware fusion."
+    }
+  ],
+  "graphs": [
+    {
+      "id": "overview",
+      "title": "The architecture, unfolded.",
+      "subtitle": "One prompt. Every transformation.",
+      "description": "A decoder-only teaching architecture with RoPE, pre-normalization, grouped-query attention, and SwiGLU. Optional memory and MTP branches are shown explicitly; this is not a named production model.",
+      "nodes": [
+        {
+          "id": "tokenizer",
+          "kind": "tokenizer",
+          "title": "Tokenization",
+          "subtitle": "Text → discrete token IDs",
+          "category": "data",
+          "description": "Encode text as UTF-8 bytes, apply ranked byte-pair merges, and look up integer token IDs. Inspect the actual merge trace in the tokenizer lab.",
+          "tensors": [
+            {
+              "name": "token IDs",
+              "shape": ["B", "T"],
+              "role": "output"
+            }
+          ],
+          "notes": [
+            "The bundled tokenizer is a small, lossless teaching BPE vocabulary. It is not the tokenizer of a production model."
+          ],
+          "sourceIds": ["bpe"],
+          "childGraph": "tokenization"
+        },
+        {
+          "id": "embedding",
+          "kind": "embedding",
+          "title": "Token embeddings",
+          "subtitle": "A learned vector for every token",
+          "category": "data",
+          "description": "Gather one learned embedding row per token ID. This is an indexed lookup, not multiplication of token IDs by the weight matrix.",
+          "equation": "X_{b,t,:}=E[\\mathrm{id}_{b,t},:]",
+          "tensors": [
+            {
+              "name": "IDs",
+              "shape": ["B", "T"],
+              "role": "input"
+            },
+            {
+              "name": "E",
+              "shape": ["V", "D"],
+              "role": "weight"
+            },
+            {
+              "name": "X",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "decoder",
+          "kind": "decoder",
+          "title": "Transformer blocks",
+          "subtitle": "Attention + feed-forward + residuals",
+          "category": "compute",
+          "description": "Pass the residual stream through L distinct decoder blocks. Each block has its own parameters and KV state. Open one block to follow its two residual paths.",
+          "equation": "X^{(\\ell+1)}=\\operatorname{Block}_{\\ell}(X^{(\\ell)})",
+          "tensors": [
+            {
+              "name": "X",
+              "shape": ["B", "T", "D"],
+              "role": "input"
+            },
+            {
+              "name": "X next",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": ["attention", "rms", "swiglu"],
+          "childGraph": "block",
+          "repeat": "L"
+        },
+        {
+          "id": "kv",
+          "kind": "kv",
+          "title": "KV cache",
+          "subtitle": "Persistent state · every layer",
+          "category": "memory",
+          "description": "Keep previously computed keys and values for attention. Every layer writes only its own state. Query heads share KV heads according to the selected attention architecture.",
+          "tensors": [
+            {
+              "name": "K and V, each",
+              "shape": ["L", "B", "Hkv", "S", "Dh"],
+              "role": "state"
+            }
+          ],
+          "notes": [],
+          "sourceIds": ["gqa", "paged"],
+          "childGraph": "cache"
+        },
+        {
+          "id": "memory",
+          "kind": "memory",
+          "title": "N-gram memory",
+          "subtitle": "Optional · conditional lookup",
+          "category": "memory",
+          "description": "A separate, optional memory module retrieves learned vectors from local token n-grams. Inspect an illustrative hash lookup and gated fusion pathway.",
+          "tensors": [
+            {
+              "name": "memory features",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": ["An extension study, not a claim that all transformers contain n-gram memory."],
+          "sourceIds": ["engram"],
+          "childGraph": "memory"
+        },
+        {
+          "id": "mtp",
+          "kind": "mtp",
+          "title": "Multi-token prediction",
+          "subtitle": "Optional · additional future targets",
+          "category": "output",
+          "description": "Auxiliary prediction modules provide additional training targets. Open a sequential MTP pathway to see shifted token embeddings and the shared output head.",
+          "tensors": [
+            {
+              "name": "future logits",
+              "shape": ["B", "T", "V"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": ["mtp", "deepseek"],
+          "childGraph": "mtp"
+        },
+        {
+          "id": "output",
+          "kind": "output",
+          "title": "Output head & sampling",
+          "subtitle": "Normalize → logits → next token",
+          "category": "output",
+          "description": "Normalize final hidden vectors, project them to vocabulary logits, select a token and decode its bytes. Open this pathway to inspect each operation.",
+          "tensors": [
+            {
+              "name": "hidden states",
+              "shape": ["B", "T", "D"],
+              "role": "input"
+            },
+            {
+              "name": "next token ID",
+              "shape": ["B", "1"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": [],
+          "childGraph": "output"
+        }
+      ],
+      "edges": [
+        {
+          "id": "tokenizer--embedding",
+          "source": "tokenizer",
+          "target": "embedding",
+          "label": "gather",
+          "operation": "Use token IDs to select embedding rows.",
+          "shape": ["B", "T"],
+          "description": "Use token IDs to select embedding rows.",
+          "kind": "flow",
+          "sourceSide": "right",
+          "targetSide": "left"
+        },
+        {
+          "id": "embedding--decoder",
+          "source": "embedding",
+          "target": "decoder",
+          "label": "residual stream",
+          "operation": "Pass token vectors into the first block.",
+          "shape": ["B", "T", "D"],
+          "description": "Pass token vectors into the first block.",
+          "kind": "flow",
+          "sourceSide": "bottom",
+          "targetSide": "top"
+        },
+        {
+          "id": "decoder--kv",
+          "source": "decoder",
+          "target": "kv",
+          "label": "write / read",
+          "operation": "Append this layer’s new K/V, then attend to the visible prefix.",
+          "shape": ["L", "B", "Hkv", "S", "Dh"],
+          "description": "Append this layer’s new K/V, then attend to the visible prefix.",
+          "kind": "state"
+        },
+        {
+          "id": "memory--decoder",
+          "source": "memory",
+          "target": "decoder",
+          "label": "optional fusion",
+          "operation": "A memory extension can augment the block’s hidden stream.",
+          "shape": ["B", "T", "D"],
+          "description": "A memory extension can augment the block’s hidden stream.",
+          "kind": "auxiliary",
+          "sourceSide": "right",
+          "targetSide": "left"
+        },
+        {
+          "id": "decoder--output",
+          "source": "decoder",
+          "target": "output",
+          "label": "final hidden state",
+          "operation": "Pass the last decoder layer output to the language model head.",
+          "shape": ["B", "T", "D"],
+          "description": "The final decoder layer returns one hidden vector per query position.",
+          "kind": "flow",
+          "sourceSide": "bottom",
+          "targetSide": "top"
+        },
+        {
+          "id": "output--mtp",
+          "source": "output",
+          "target": "mtp",
+          "label": "shared head",
+          "operation": "Auxiliary MTP modules share the output projection in this sequential design.",
+          "shape": ["D", "V"],
+          "description": "The MTP modules use the same output projection parameters in this teaching design.",
+          "kind": "auxiliary"
+        }
+      ],
+      "layout": {
+        "direction": "RIGHT",
+        "positions": {
+          "tokenizer": {
+            "x": 35,
+            "y": 35
+          },
+          "embedding": {
+            "x": 365,
+            "y": 35
+          },
+          "memory": {
+            "x": 35,
+            "y": 205
+          },
+          "decoder": {
+            "x": 365,
+            "y": 205
+          },
+          "kv": {
+            "x": 695,
+            "y": 205
+          },
+          "output": {
+            "x": 365,
+            "y": 375
+          },
+          "mtp": {
+            "x": 695,
+            "y": 375
+          }
+        }
+      }
+    },
+    {
+      "id": "tokenization",
+      "title": "From text to tokens.",
+      "subtitle": "Bytes, merges, IDs. Nothing hidden.",
+      "description": "An executable byte-level BPE demonstration with ranked merges and a lossless round-trip. The tokenizer adapter is separate from the model graph so future tokenizer designs can replace it.",
+      "nodes": [
+        {
+          "id": "text",
+          "kind": "text",
+          "title": "Input text",
+          "subtitle": "Unicode string",
+          "category": "data",
+          "description": "The prompt starts as Unicode text. A tokenizer may include normalization and special-token handling; this teaching adapter preserves the input exactly.",
+          "tensors": [],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "utf8",
+          "kind": "utf8",
+          "title": "UTF-8 encoding",
+          "subtitle": "Characters → bytes",
+          "category": "data",
+          "description": "Encode the complete string to bytes. One Unicode character may span several bytes; byte boundaries and character boundaries are different.",
+          "tensors": [],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "bpe",
+          "kind": "bpe",
+          "title": "Ranked BPE merges",
+          "subtitle": "Lowest-ranked eligible pair first",
+          "category": "data",
+          "description": "Start from one token per byte. Repeatedly find an adjacent pair in the merge vocabulary with the lowest rank, merge it, and recompute eligible pairs.",
+          "tensors": [],
+          "notes": [],
+          "sourceIds": ["bpe"]
+        },
+        {
+          "id": "ids",
+          "kind": "ids",
+          "title": "Vocabulary IDs",
+          "subtitle": "One ID per merged byte span",
+          "category": "data",
+          "description": "Map each final byte span to its vocabulary ID. IDs are categorical indices and do not have numerical similarity.",
+          "tensors": [
+            {
+              "name": "IDs",
+              "shape": ["B", "T"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "lookup",
+          "kind": "lookup",
+          "title": "Embedding lookup",
+          "subtitle": "IDs index learned rows",
+          "category": "compute",
+          "description": "The model receives an array of token IDs and gathers the associated learned vectors.",
+          "equation": "X=E[\\mathrm{ids}]",
+          "tensors": [
+            {
+              "name": "embedding",
+              "shape": ["V", "D"],
+              "role": "weight"
+            },
+            {
+              "name": "X",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        }
+      ],
+      "edges": [
+        {
+          "id": "text--utf8",
+          "source": "text",
+          "target": "utf8",
+          "label": "encode",
+          "operation": "Unicode to UTF-8 bytes.",
+          "shape": [],
+          "description": "Unicode to UTF-8 bytes.",
+          "kind": "flow"
+        },
+        {
+          "id": "utf8--bpe",
+          "source": "utf8",
+          "target": "bpe",
+          "label": "merge bytes",
+          "operation": "Run deterministic vocabulary-ranked BPE merges.",
+          "shape": [],
+          "description": "Run deterministic vocabulary-ranked BPE merges.",
+          "kind": "flow"
+        },
+        {
+          "id": "bpe--ids",
+          "source": "bpe",
+          "target": "ids",
+          "label": "lookup",
+          "operation": "Return the vocabulary ID for each final byte span.",
+          "shape": ["B", "T"],
+          "description": "Return the vocabulary ID for each final byte span.",
+          "kind": "flow"
+        },
+        {
+          "id": "ids--lookup",
+          "source": "ids",
+          "target": "lookup",
+          "label": "gather rows",
+          "operation": "Index the embedding matrix.",
+          "shape": ["B", "T", "D"],
+          "description": "Index the embedding matrix.",
+          "kind": "flow"
+        }
+      ],
+      "layout": {
+        "direction": "RIGHT",
+        "positions": {}
+      }
+    },
+    {
+      "id": "block",
+      "title": "Inside a transformer block.",
+      "subtitle": "Two sublayers. Two residual paths.",
+      "description": "A pre-norm decoder block. Choose a layer in the inspector: its shapes stay the same, while parameters and cached states are distinct.",
+      "nodes": [
+        {
+          "id": "input",
+          "kind": "input",
+          "title": "Residual stream",
+          "subtitle": "Input to layer ℓ",
+          "category": "data",
+          "description": "The current token representations enter this decoder block.",
+          "tensors": [
+            {
+              "name": "X",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "norm1",
+          "kind": "norm1",
+          "title": "Attention RMSNorm",
+          "subtitle": "Feature-wise normalization",
+          "category": "compute",
+          "description": "Normalize over D features independently for each batch item and token.",
+          "equation": "\\hat{x}=\\gamma\\odot x/\\sqrt{\\operatorname{mean}(x^2)+\\epsilon}",
+          "tensors": [
+            {
+              "name": "X",
+              "shape": ["B", "T", "D"],
+              "role": "input"
+            },
+            {
+              "name": "γ₁",
+              "shape": ["D"],
+              "role": "weight"
+            },
+            {
+              "name": "X̂",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": ["rms"]
+        },
+        {
+          "id": "attn",
+          "kind": "attn",
+          "title": "Self-attention",
+          "subtitle": "Mix information across tokens",
+          "category": "compute",
+          "description": "Project Q, K, V; apply positional rotations; compute masked scaled dot-product attention. Drill down to inspect every operation and each query head.",
+          "tensors": [
+            {
+              "name": "X",
+              "shape": ["B", "T", "D"],
+              "role": "input"
+            },
+            {
+              "name": "A",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": ["attention", "gqa", "rope"],
+          "childGraph": "attention"
+        },
+        {
+          "id": "add1",
+          "kind": "add1",
+          "title": "Residual addition",
+          "subtitle": "X + Attention(RMSNorm(X))",
+          "category": "compute",
+          "description": "Add the attention result element by element to the original residual stream. Both operands have identical shape.",
+          "equation": "Y=X+\\operatorname{Attn}(\\operatorname{RMSNorm}(X))",
+          "tensors": [
+            {
+              "name": "X",
+              "shape": ["B", "T", "D"],
+              "role": "input"
+            },
+            {
+              "name": "attention result",
+              "shape": ["B", "T", "D"],
+              "role": "input"
+            },
+            {
+              "name": "Y",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "norm2",
+          "kind": "norm2",
+          "title": "FFN RMSNorm",
+          "subtitle": "Separate learned scale",
+          "category": "compute",
+          "description": "Normalize the post-attention stream before the position-wise feed-forward sublayer.",
+          "tensors": [
+            {
+              "name": "Y",
+              "shape": ["B", "T", "D"],
+              "role": "input"
+            },
+            {
+              "name": "γ₂",
+              "shape": ["D"],
+              "role": "weight"
+            },
+            {
+              "name": "Ŷ",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": ["rms"]
+        },
+        {
+          "id": "swiglu",
+          "kind": "swiglu",
+          "title": "SwiGLU feed-forward",
+          "subtitle": "Expand → gate → contract",
+          "category": "compute",
+          "description": "Compute two D→F projections, apply SiLU to the gate branch, multiply element by element, and project F→D. Open the feed-forward graph for each matrix.",
+          "equation": "(\\operatorname{SiLU}(XW_g)\\odot XW_u)W_d",
+          "tensors": [
+            {
+              "name": "X",
+              "shape": ["B", "T", "D"],
+              "role": "input"
+            },
+            {
+              "name": "Wg, Wu, each",
+              "shape": ["D", "F"],
+              "role": "weight"
+            },
+            {
+              "name": "Wd",
+              "shape": ["F", "D"],
+              "role": "weight"
+            },
+            {
+              "name": "F",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [
+            "This dense FFN can be replaced by a mixture-of-experts subgraph in a future model definition."
+          ],
+          "sourceIds": ["swiglu"],
+          "childGraph": "feedforward"
+        },
+        {
+          "id": "add2",
+          "kind": "add2",
+          "title": "Block output",
+          "subtitle": "Y + FFN(RMSNorm(Y))",
+          "category": "compute",
+          "description": "Add the feed-forward result to the post-attention residual stream and pass it to the next layer.",
+          "equation": "X^{(\\ell+1)}=Y+\\operatorname{FFN}(\\operatorname{RMSNorm}(Y))",
+          "tensors": [
+            {
+              "name": "Y",
+              "shape": ["B", "T", "D"],
+              "role": "input"
+            },
+            {
+              "name": "FFN result",
+              "shape": ["B", "T", "D"],
+              "role": "input"
+            },
+            {
+              "name": "X next",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        }
+      ],
+      "edges": [
+        {
+          "id": "input--norm1",
+          "source": "input",
+          "target": "norm1",
+          "label": "normalize",
+          "operation": "Normalize per token over the feature axis.",
+          "shape": ["B", "T", "D"],
+          "description": "Normalize per token over the feature axis.",
+          "kind": "flow"
+        },
+        {
+          "id": "norm1--attn",
+          "source": "norm1",
+          "target": "attn",
+          "label": "normalized X",
+          "operation": "Attention consumes normalized representations.",
+          "shape": ["B", "T", "D"],
+          "description": "Attention consumes normalized representations.",
+          "kind": "flow"
+        },
+        {
+          "id": "attn--add1",
+          "source": "attn",
+          "target": "add1",
+          "label": "attention result",
+          "operation": "Attention output projected back to D features.",
+          "shape": ["B", "T", "D"],
+          "description": "Attention output projected back to D features.",
+          "kind": "flow"
+        },
+        {
+          "id": "input--add1",
+          "source": "input",
+          "target": "add1",
+          "label": "residual +",
+          "operation": "Element-wise addition of the original X.",
+          "equation": "Y_{b,t,d}=X_{b,t,d}+A_{b,t,d}",
+          "shape": ["B", "T", "D"],
+          "description": "Element-wise addition of the original X.",
+          "kind": "residual"
+        },
+        {
+          "id": "add1--norm2",
+          "source": "add1",
+          "target": "norm2",
+          "label": "normalize",
+          "operation": "Normalize post-attention hidden vectors.",
+          "shape": ["B", "T", "D"],
+          "description": "Normalize post-attention hidden vectors.",
+          "kind": "flow"
+        },
+        {
+          "id": "norm2--swiglu",
+          "source": "norm2",
+          "target": "swiglu",
+          "label": "feed-forward",
+          "operation": "Independently transform each token over the feature dimension.",
+          "shape": ["B", "T", "D"],
+          "description": "Independently transform each token over the feature dimension.",
+          "kind": "flow"
+        },
+        {
+          "id": "swiglu--add2",
+          "source": "swiglu",
+          "target": "add2",
+          "label": "FFN result",
+          "operation": "Project the gated F features back to D.",
+          "shape": ["B", "T", "D"],
+          "description": "Project the gated F features back to D.",
+          "kind": "flow"
+        },
+        {
+          "id": "add1--add2",
+          "source": "add1",
+          "target": "add2",
+          "label": "residual +",
+          "operation": "Add the unchanged Y to the feed-forward result.",
+          "shape": ["B", "T", "D"],
+          "description": "Add the unchanged Y to the feed-forward result.",
+          "kind": "residual"
+        }
+      ],
+      "layout": {
+        "direction": "RIGHT",
+        "positions": {}
+      }
+    },
+    {
+      "id": "attention",
+      "title": "Attention, operation by operation.",
+      "subtitle": "Follow a query. Inspect every head.",
+      "description": "Dense causal attention with configurable MHA, GQA, or MQA sharing. Prefill processes the full prompt; decode processes one new query against a longer cached prefix.",
+      "nodes": [
+        {
+          "id": "x",
+          "kind": "x",
+          "title": "Normalized hidden state",
+          "subtitle": "One vector per query position",
+          "category": "data",
+          "description": "Input to the layer’s learned query, key and value projections.",
+          "tensors": [
+            {
+              "name": "X",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "q",
+          "kind": "q",
+          "title": "Query projection",
+          "subtitle": "X · Wq → reshape heads",
+          "category": "compute",
+          "description": "Multiply by the query weight matrix and reshape to expose the query-head axis.",
+          "equation": "Q=\\operatorname{reshape}(XW_Q)",
+          "tensors": [
+            {
+              "name": "Wq",
+              "shape": ["D", "Hq*Dh"],
+              "role": "weight"
+            },
+            {
+              "name": "Q",
+              "shape": ["B", "Hq", "T", "Dh"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "k",
+          "kind": "k",
+          "title": "Key projection",
+          "subtitle": "X · Wk → reshape KV heads",
+          "category": "compute",
+          "description": "Project keys using Hkv heads. Sharing reduces this projection and its persistent cache.",
+          "equation": "K=\\operatorname{reshape}(XW_K)",
+          "tensors": [
+            {
+              "name": "Wk",
+              "shape": ["D", "Hkv*Dh"],
+              "role": "weight"
+            },
+            {
+              "name": "K new",
+              "shape": ["B", "Hkv", "T", "Dh"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": ["gqa"]
+        },
+        {
+          "id": "v",
+          "kind": "v",
+          "title": "Value projection",
+          "subtitle": "X · Wv → reshape KV heads",
+          "category": "compute",
+          "description": "Values carry the features that attention will average. This architecture applies RoPE to Q and K, not V.",
+          "equation": "V=\\operatorname{reshape}(XW_V)",
+          "tensors": [
+            {
+              "name": "Wv",
+              "shape": ["D", "Hkv*Dh"],
+              "role": "weight"
+            },
+            {
+              "name": "V new",
+              "shape": ["B", "Hkv", "T", "Dh"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "ropeq",
+          "kind": "ropeq",
+          "title": "RoPE · queries",
+          "subtitle": "Rotate feature pairs by position",
+          "category": "compute",
+          "description": "Rotate pairs of query features using their absolute token positions. Decode positions continue from the cached prefix.",
+          "equation": "\\begin{bmatrix}q_{2j}^{\\prime}\\\\q_{2j+1}^{\\prime}\\end{bmatrix}=\\begin{bmatrix}\\cos\\theta&-\\sin\\theta\\\\\\sin\\theta&\\cos\\theta\\end{bmatrix}\\begin{bmatrix}q_{2j}\\\\q_{2j+1}\\end{bmatrix}",
+          "tensors": [
+            {
+              "name": "Q rotated",
+              "shape": ["B", "Hq", "T", "Dh"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": ["rope"]
+        },
+        {
+          "id": "ropek",
+          "kind": "ropek",
+          "title": "RoPE · keys",
+          "subtitle": "Rotate, then append to cache",
+          "category": "compute",
+          "description": "Use the same position-dependent rotations for the newly computed keys.",
+          "tensors": [
+            {
+              "name": "K rotated",
+              "shape": ["B", "Hkv", "T", "Dh"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": ["rope"]
+        },
+        {
+          "id": "cachek",
+          "kind": "cachek",
+          "title": "Key cache",
+          "subtitle": "Append along sequence axis",
+          "category": "memory",
+          "description": "Persist rotated keys for this layer. Prior keys are reused; they are not recomputed for every generated token.",
+          "tensors": [
+            {
+              "name": "K prefix",
+              "shape": ["B", "Hkv", "S", "Dh"],
+              "role": "state"
+            }
+          ],
+          "notes": [],
+          "sourceIds": [],
+          "childGraph": "cache"
+        },
+        {
+          "id": "cachev",
+          "kind": "cachev",
+          "title": "Value cache",
+          "subtitle": "Append along sequence axis",
+          "category": "memory",
+          "description": "Persist values independently from keys, with the same layer, batch, head and sequence indexing.",
+          "tensors": [
+            {
+              "name": "V prefix",
+              "shape": ["B", "Hkv", "S", "Dh"],
+              "role": "state"
+            }
+          ],
+          "notes": [],
+          "sourceIds": [],
+          "childGraph": "cache"
+        },
+        {
+          "id": "scores",
+          "kind": "scores",
+          "title": "Q · Kᵀ",
+          "subtitle": "Pairwise query–key dot products",
+          "category": "compute",
+          "description": "For each query head, select its KV group and contract over Dh. The result has a query-position axis and a key-position axis.",
+          "equation": "R_{b,h,t,s}=\\sum_{j=1}^{d_h}Q_{b,h,t,j}K_{b,g(h),s,j}",
+          "tensors": [
+            {
+              "name": "Q",
+              "shape": ["B", "Hq", "T", "Dh"],
+              "role": "input"
+            },
+            {
+              "name": "K shared",
+              "shape": ["B", "Hkv", "S", "Dh"],
+              "role": "input"
+            },
+            {
+              "name": "scores",
+              "shape": ["B", "Hq", "T", "S"],
+              "role": "output"
+            }
+          ],
+          "notes": ["g(h) = floor(h / (Hq/Hkv)) for zero-based, contiguous query-head groups."],
+          "sourceIds": []
+        },
+        {
+          "id": "scale",
+          "kind": "scale",
+          "title": "Scale + causal mask",
+          "subtitle": "Divide by √Dh · mask the future",
+          "category": "compute",
+          "description": "Scale the dot products, then add negative infinity wherever the key position is in the future. Decode uses absolute positions, not a naïve T×S triangular mask starting at zero.",
+          "equation": "\\tilde{R}=R/\\sqrt{d_h}+M,\\quad M_{t,s}=\\begin{cases}0&s\\le p_t\\\\-\\infty&s>p_t\\end{cases}",
+          "tensors": [
+            {
+              "name": "masked scores",
+              "shape": ["B", "Hq", "T", "S"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": ["attention"]
+        },
+        {
+          "id": "softmax",
+          "kind": "softmax",
+          "title": "Row-wise softmax",
+          "subtitle": "Normalize over key positions",
+          "category": "compute",
+          "description": "For every query position and query head, turn visible scores into non-negative weights that sum to one. Masked positions receive zero weight.",
+          "equation": "A_{t,s}=\\frac{\\exp(\\tilde{R}_{t,s}-m_t)}{\\sum_u\\exp(\\tilde{R}_{t,u}-m_t)}",
+          "tensors": [
+            {
+              "name": "A",
+              "shape": ["B", "Hq", "T", "S"],
+              "role": "output"
+            }
+          ],
+          "notes": ["Subtracting each row’s maximum m improves numerical stability."],
+          "sourceIds": []
+        },
+        {
+          "id": "weighted",
+          "kind": "weighted",
+          "title": "Attention · V",
+          "subtitle": "Weighted sum over visible values",
+          "category": "compute",
+          "description": "Contract the key-position axis S. Each query head produces Dh features using the V head assigned to its KV group.",
+          "equation": "O_{b,h,t,j}=\\sum_s A_{b,h,t,s}V_{b,g(h),s,j}",
+          "tensors": [
+            {
+              "name": "A",
+              "shape": ["B", "Hq", "T", "S"],
+              "role": "input"
+            },
+            {
+              "name": "V",
+              "shape": ["B", "Hkv", "S", "Dh"],
+              "role": "input"
+            },
+            {
+              "name": "O heads",
+              "shape": ["B", "Hq", "T", "Dh"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "concat",
+          "kind": "concat",
+          "title": "Concatenate heads",
+          "subtitle": "Transpose + reshape",
+          "category": "compute",
+          "description": "Move the head axis next to features and flatten Hq×Dh. Concatenation rearranges features; it does not sum heads.",
+          "equation": "[B,H_q,T,d_h]\\to[B,T,H_qd_h]",
+          "tensors": [
+            {
+              "name": "joined heads",
+              "shape": ["B", "T", "Hq*Dh"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "project",
+          "kind": "project",
+          "title": "Output projection",
+          "subtitle": "Joined heads · Wo",
+          "category": "compute",
+          "description": "Mix the concatenated head features and return D features to the attention residual branch.",
+          "equation": "Y=\\operatorname{Concat}(O_1,\\ldots,O_{H_q})W_O",
+          "tensors": [
+            {
+              "name": "Wo",
+              "shape": ["Hq*Dh", "D"],
+              "role": "weight"
+            },
+            {
+              "name": "Y",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [
+            "FlashAttention computes the same dense attention with tiled kernels; it need not materialize the full attention matrix. The heatmap here is synthetic teaching data."
+          ],
+          "sourceIds": ["flash"]
+        }
+      ],
+      "edges": [
+        {
+          "id": "x--q",
+          "source": "x",
+          "target": "q",
+          "label": "linear Wq",
+          "operation": "Matrix multiplication followed by reshape.",
+          "shape": ["B", "Hq", "T", "Dh"],
+          "description": "Matrix multiplication followed by reshape.",
+          "kind": "flow"
+        },
+        {
+          "id": "x--k",
+          "source": "x",
+          "target": "k",
+          "label": "linear Wk",
+          "operation": "Matrix multiplication followed by reshape.",
+          "shape": ["B", "Hkv", "T", "Dh"],
+          "description": "Matrix multiplication followed by reshape.",
+          "kind": "flow"
+        },
+        {
+          "id": "x--v",
+          "source": "x",
+          "target": "v",
+          "label": "linear Wv",
+          "operation": "Matrix multiplication followed by reshape.",
+          "shape": ["B", "Hkv", "T", "Dh"],
+          "description": "Matrix multiplication followed by reshape.",
+          "kind": "flow"
+        },
+        {
+          "id": "q--ropeq",
+          "source": "q",
+          "target": "ropeq",
+          "label": "rotate",
+          "operation": "Apply rotary positional embeddings to Q.",
+          "shape": ["B", "Hq", "T", "Dh"],
+          "description": "Apply rotary positional embeddings to Q.",
+          "kind": "flow"
+        },
+        {
+          "id": "k--ropek",
+          "source": "k",
+          "target": "ropek",
+          "label": "rotate",
+          "operation": "Apply rotary positional embeddings to K.",
+          "shape": ["B", "Hkv", "T", "Dh"],
+          "description": "Apply rotary positional embeddings to K.",
+          "kind": "flow"
+        },
+        {
+          "id": "ropek--cachek",
+          "source": "ropek",
+          "target": "cachek",
+          "label": "append K",
+          "operation": "Append the new rotated keys along S.",
+          "shape": ["B", "Hkv", "S", "Dh"],
+          "description": "Append the new rotated keys along S.",
+          "kind": "state"
+        },
+        {
+          "id": "v--cachev",
+          "source": "v",
+          "target": "cachev",
+          "label": "append V",
+          "operation": "Append new values along S.",
+          "shape": ["B", "Hkv", "S", "Dh"],
+          "description": "Append new values along S.",
+          "kind": "state"
+        },
+        {
+          "id": "ropeq--scores",
+          "source": "ropeq",
+          "target": "scores",
+          "label": "dot product",
+          "operation": "Contract Q and K over the feature axis Dh.",
+          "equation": "[T,d_h]\\,[d_h,S]\\to[T,S]",
+          "shape": ["B", "Hq", "T", "S"],
+          "description": "Contract Q and K over the feature axis Dh.",
+          "kind": "flow"
+        },
+        {
+          "id": "cachek--scores",
+          "source": "cachek",
+          "target": "scores",
+          "label": "K transpose",
+          "operation": "Select a shared KV head and transpose its sequence and feature axes.",
+          "shape": ["B", "Hkv", "S", "Dh"],
+          "description": "Select a shared KV head and transpose its sequence and feature axes.",
+          "kind": "flow"
+        },
+        {
+          "id": "scores--scale",
+          "source": "scores",
+          "target": "scale",
+          "label": "÷ √Dh",
+          "operation": "Scale logits before softmax.",
+          "shape": ["B", "Hq", "T", "S"],
+          "description": "Scale logits before softmax.",
+          "kind": "flow"
+        },
+        {
+          "id": "scale--softmax",
+          "source": "scale",
+          "target": "softmax",
+          "label": "softmax",
+          "operation": "Normalize over S, excluding masked future positions.",
+          "shape": ["B", "Hq", "T", "S"],
+          "description": "Normalize over S, excluding masked future positions.",
+          "kind": "flow"
+        },
+        {
+          "id": "softmax--weighted",
+          "source": "softmax",
+          "target": "weighted",
+          "label": "weighted sum",
+          "operation": "Multiply attention probabilities by value features.",
+          "equation": "[T,S]\\,[S,d_h]\\to[T,d_h]",
+          "shape": ["B", "Hq", "T", "Dh"],
+          "description": "Multiply attention probabilities by value features.",
+          "kind": "flow"
+        },
+        {
+          "id": "cachev--weighted",
+          "source": "cachev",
+          "target": "weighted",
+          "label": "read V",
+          "operation": "Reuse the cached values for the current layer.",
+          "shape": ["B", "Hkv", "S", "Dh"],
+          "description": "Reuse the cached values for the current layer.",
+          "kind": "state"
+        },
+        {
+          "id": "weighted--concat",
+          "source": "weighted",
+          "target": "concat",
+          "label": "join heads",
+          "operation": "Transpose and flatten head features.",
+          "shape": ["B", "T", "Hq*Dh"],
+          "description": "Transpose and flatten head features.",
+          "kind": "flow"
+        },
+        {
+          "id": "concat--project",
+          "source": "concat",
+          "target": "project",
+          "label": "linear Wo",
+          "operation": "Mix head outputs with the learned output projection.",
+          "shape": ["B", "T", "D"],
+          "description": "Mix head outputs with the learned output projection.",
+          "kind": "flow"
+        }
+      ],
+      "layout": {
+        "direction": "RIGHT",
+        "positions": {}
+      }
+    },
+    {
+      "id": "cache",
+      "title": "The KV cache, in its dimensions.",
+      "subtitle": "Layer × batch × KV head × sequence × features.",
+      "description": "A logical tensor view of persistent attention state. Inspect a layer and KV head below. Physical allocations may use blocks, strides, quantization, sharding or paging.",
+      "nodes": [
+        {
+          "id": "current",
+          "kind": "current",
+          "title": "New token features",
+          "subtitle": "Current layer · current positions",
+          "category": "data",
+          "description": "Prefill projects all prompt positions; an ordinary decode step projects one new position.",
+          "tensors": [
+            {
+              "name": "X",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "newk",
+          "kind": "newk",
+          "title": "Project + rotate K",
+          "subtitle": "New keys for this layer",
+          "category": "compute",
+          "description": "Compute this layer’s new keys and apply positional rotations.",
+          "tensors": [
+            {
+              "name": "K new",
+              "shape": ["B", "Hkv", "T", "Dh"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "newv",
+          "kind": "newv",
+          "title": "Project V",
+          "subtitle": "New values for this layer",
+          "category": "compute",
+          "description": "Compute this layer’s new value features.",
+          "tensors": [
+            {
+              "name": "V new",
+              "shape": ["B", "Hkv", "T", "Dh"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "keys",
+          "kind": "keys",
+          "title": "Persistent K tensor",
+          "subtitle": "Write only the current layer slice",
+          "category": "memory",
+          "description": "Append keys at the correct sequence positions. The logical all-layer view has axes L, B, Hkv, S, Dh; implementations often store separate tensors per layer.",
+          "equation": "K^{(\\ell)}_{:,:,s,:}\\leftarrow k_s^{(\\ell)}",
+          "tensors": [
+            {
+              "name": "K all layers",
+              "shape": ["L", "B", "Hkv", "S", "Dh"],
+              "role": "state"
+            }
+          ],
+          "notes": [],
+          "sourceIds": ["gqa"]
+        },
+        {
+          "id": "values",
+          "kind": "values",
+          "title": "Persistent V tensor",
+          "subtitle": "A distinct allocation from K",
+          "category": "memory",
+          "description": "Store values with the same logical indexing as keys. The K/V selector is not an extra attention head.",
+          "tensors": [
+            {
+              "name": "V all layers",
+              "shape": ["L", "B", "Hkv", "S", "Dh"],
+              "role": "state"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "read",
+          "kind": "read",
+          "title": "Attend to the prefix",
+          "subtitle": "Read this layer’s K and V",
+          "category": "compute",
+          "description": "A query reads visible positions from its assigned KV head. Query heads never share state across decoder layers.",
+          "tensors": [
+            {
+              "name": "K slice, V slice",
+              "shape": ["B", "Hkv", "S", "Dh"],
+              "role": "input"
+            },
+            {
+              "name": "attention output",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [
+            "Logical dense cache bytes = 2 × L × B × Hkv × S × Dh × bytes per scalar. Allocator overhead and quantization metadata are excluded.",
+            "PagedAttention changes physical memory management, not the meaning of these logical axes.",
+            "MLA requires a different state schema: compressed latent vectors plus positional key state, rather than this full K/V representation."
+          ],
+          "sourceIds": ["paged", "deepseek"]
+        }
+      ],
+      "edges": [
+        {
+          "id": "current--newk",
+          "source": "current",
+          "target": "newk",
+          "label": "project K",
+          "operation": "Compute K for new positions.",
+          "shape": ["B", "Hkv", "T", "Dh"],
+          "description": "Compute K for new positions.",
+          "kind": "flow"
+        },
+        {
+          "id": "current--newv",
+          "source": "current",
+          "target": "newv",
+          "label": "project V",
+          "operation": "Compute V for new positions.",
+          "shape": ["B", "Hkv", "T", "Dh"],
+          "description": "Compute V for new positions.",
+          "kind": "flow"
+        },
+        {
+          "id": "newk--keys",
+          "source": "newk",
+          "target": "keys",
+          "label": "append",
+          "operation": "Write K to this layer’s state slice.",
+          "shape": ["L", "B", "Hkv", "S", "Dh"],
+          "description": "Write K to this layer’s state slice.",
+          "kind": "state"
+        },
+        {
+          "id": "newv--values",
+          "source": "newv",
+          "target": "values",
+          "label": "append",
+          "operation": "Write V to this layer’s state slice.",
+          "shape": ["L", "B", "Hkv", "S", "Dh"],
+          "description": "Write V to this layer’s state slice.",
+          "kind": "state"
+        },
+        {
+          "id": "keys--read",
+          "source": "keys",
+          "target": "read",
+          "label": "read keys",
+          "operation": "Read only the current layer and visible positions.",
+          "shape": ["B", "Hkv", "S", "Dh"],
+          "description": "Read only the current layer and visible positions.",
+          "kind": "state"
+        },
+        {
+          "id": "values--read",
+          "source": "values",
+          "target": "read",
+          "label": "read values",
+          "operation": "Read values for the selected KV head.",
+          "shape": ["B", "Hkv", "S", "Dh"],
+          "description": "Read values for the selected KV head.",
+          "kind": "state"
+        }
+      ],
+      "layout": {
+        "direction": "RIGHT",
+        "positions": {}
+      }
+    },
+    {
+      "id": "feedforward",
+      "title": "A feed-forward network, unfolded.",
+      "subtitle": "Feature expansion with a learned gate.",
+      "description": "SwiGLU operates independently at every token position. Its Hadamard product is different from the matrix products on either side.",
+      "nodes": [
+        {
+          "id": "ffx",
+          "kind": "ffx",
+          "title": "Normalized input",
+          "subtitle": "B × T × D",
+          "category": "data",
+          "description": "Token representations after the block’s second normalization.",
+          "tensors": [
+            {
+              "name": "X",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "gate",
+          "kind": "gate",
+          "title": "Gate projection",
+          "subtitle": "D → F features",
+          "category": "compute",
+          "description": "Multiply by a learned gate matrix.",
+          "equation": "G=XW_g",
+          "tensors": [
+            {
+              "name": "Wg",
+              "shape": ["D", "F"],
+              "role": "weight"
+            },
+            {
+              "name": "G",
+              "shape": ["B", "T", "F"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "up",
+          "kind": "up",
+          "title": "Up projection",
+          "subtitle": "D → F features",
+          "category": "compute",
+          "description": "A separate learned projection expands the same input.",
+          "equation": "U=XW_u",
+          "tensors": [
+            {
+              "name": "Wu",
+              "shape": ["D", "F"],
+              "role": "weight"
+            },
+            {
+              "name": "U",
+              "shape": ["B", "T", "F"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "silu",
+          "kind": "silu",
+          "title": "SiLU activation",
+          "subtitle": "x · sigmoid(x)",
+          "category": "compute",
+          "description": "Apply the activation element by element to the gate features.",
+          "equation": "\\operatorname{SiLU}(g)=g\\,\\sigma(g)",
+          "tensors": [
+            {
+              "name": "activated gate",
+              "shape": ["B", "T", "F"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": ["swiglu"]
+        },
+        {
+          "id": "multiply",
+          "kind": "multiply",
+          "title": "Hadamard product",
+          "subtitle": "Element-wise gating · ⊙",
+          "category": "compute",
+          "description": "Multiply matching feature elements. No dimension is contracted.",
+          "equation": "Z_{b,t,f}=\\operatorname{SiLU}(G_{b,t,f})U_{b,t,f}",
+          "tensors": [
+            {
+              "name": "Z",
+              "shape": ["B", "T", "F"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "down",
+          "kind": "down",
+          "title": "Down projection",
+          "subtitle": "F → D features",
+          "category": "compute",
+          "description": "Contract the intermediate feature axis with the learned down-projection matrix.",
+          "equation": "Y=ZW_d",
+          "tensors": [
+            {
+              "name": "Wd",
+              "shape": ["F", "D"],
+              "role": "weight"
+            },
+            {
+              "name": "Y",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        }
+      ],
+      "edges": [
+        {
+          "id": "ffx--gate",
+          "source": "ffx",
+          "target": "gate",
+          "label": "matrix product",
+          "operation": "D contracts; F is the new feature axis.",
+          "shape": ["B", "T", "F"],
+          "description": "D contracts; F is the new feature axis.",
+          "kind": "flow"
+        },
+        {
+          "id": "ffx--up",
+          "source": "ffx",
+          "target": "up",
+          "label": "matrix product",
+          "operation": "Independent up-projection.",
+          "shape": ["B", "T", "F"],
+          "description": "Independent up-projection.",
+          "kind": "flow"
+        },
+        {
+          "id": "gate--silu",
+          "source": "gate",
+          "target": "silu",
+          "label": "SiLU",
+          "operation": "Element-wise nonlinearity.",
+          "shape": ["B", "T", "F"],
+          "description": "Element-wise nonlinearity.",
+          "kind": "flow"
+        },
+        {
+          "id": "silu--multiply",
+          "source": "silu",
+          "target": "multiply",
+          "label": "⊙ gate",
+          "operation": "Multiply corresponding feature elements.",
+          "equation": "(A\\odot B)_i=A_iB_i",
+          "shape": ["B", "T", "F"],
+          "description": "Multiply corresponding feature elements.",
+          "kind": "flow"
+        },
+        {
+          "id": "up--multiply",
+          "source": "up",
+          "target": "multiply",
+          "label": "⊙ features",
+          "operation": "Multiply with the activated gate.",
+          "shape": ["B", "T", "F"],
+          "description": "Multiply with the activated gate.",
+          "kind": "flow"
+        },
+        {
+          "id": "multiply--down",
+          "source": "multiply",
+          "target": "down",
+          "label": "matrix product",
+          "operation": "Contract F and return D features.",
+          "shape": ["B", "T", "D"],
+          "description": "Contract F and return D features.",
+          "kind": "flow"
+        }
+      ],
+      "layout": {
+        "direction": "RIGHT",
+        "positions": {}
+      }
+    },
+    {
+      "id": "output",
+      "title": "From hidden states to text.",
+      "subtitle": "Normalize. Project. Select. Decode.",
+      "description": "The standard next-token output pathway, including the final normalization, vocabulary projection, selection policy and byte decoding.",
+      "nodes": [
+        {
+          "id": "finalnorm",
+          "kind": "finalnorm",
+          "title": "Final RMSNorm",
+          "subtitle": "Normalize the residual stream",
+          "category": "compute",
+          "description": "Normalize each token vector over its feature dimension before the vocabulary projection. RMSNorm scales by root mean square without subtracting the feature mean.",
+          "equation": "\\operatorname{RMSNorm}(x)=\\gamma\\odot\\frac{x}{\\sqrt{D^{-1}\\sum_j x_j^2+\\epsilon}}",
+          "tensors": [
+            {
+              "name": "X",
+              "shape": ["B", "T", "D"],
+              "role": "input"
+            },
+            {
+              "name": "γ",
+              "shape": ["D"],
+              "role": "weight"
+            },
+            {
+              "name": "Y",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": ["rms"]
+        },
+        {
+          "id": "lmhead",
+          "kind": "lmhead",
+          "title": "Vocabulary projection",
+          "subtitle": "Hidden state → logits",
+          "category": "output",
+          "description": "Project the final hidden state into one logit per vocabulary item. During generation only the last position is needed. The embedding and output weights may be tied, but that is an architecture choice.",
+          "equation": "Z=XW_U,\\quad W_U\\in\\mathbb{R}^{D\\times V}",
+          "tensors": [
+            {
+              "name": "X",
+              "shape": ["B", "T", "D"],
+              "role": "input"
+            },
+            {
+              "name": "Wᵤ",
+              "shape": ["D", "V"],
+              "role": "weight"
+            },
+            {
+              "name": "logits",
+              "shape": ["B", "T", "V"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "sample",
+          "kind": "sample",
+          "title": "Select next token",
+          "subtitle": "Temperature · softmax · sampling",
+          "category": "output",
+          "description": "Convert last-position logits into a distribution, optionally filter with top-k or top-p, then choose a token. Greedy decoding uses argmax. Temperature must be positive for the softmax formula.",
+          "equation": "p_i=\\frac{\\exp(z_i/\\tau)}{\\sum_j\\exp(z_j/\\tau)}",
+          "tensors": [
+            {
+              "name": "last logits",
+              "shape": ["B", "V"],
+              "role": "input"
+            },
+            {
+              "name": "next ID",
+              "shape": ["B", "1"],
+              "role": "output"
+            }
+          ],
+          "notes": [
+            "This workbench visualizes structure. It does not run trained weights or generate language."
+          ],
+          "sourceIds": []
+        },
+        {
+          "id": "decode",
+          "kind": "decode",
+          "title": "Decode to text",
+          "subtitle": "Token bytes → UTF-8 text",
+          "category": "output",
+          "description": "Map the selected IDs back to bytes and decode the concatenated byte stream. Append the chosen token ID to the model sequence for the next inference step.",
+          "tensors": [
+            {
+              "name": "selected ID",
+              "shape": ["B", "1"],
+              "role": "input"
+            }
+          ],
+          "notes": [
+            "Output is detokenization, not re-encoding. Some byte-level tokens are not valid UTF-8 individually."
+          ],
+          "sourceIds": []
+        }
+      ],
+      "edges": [
+        {
+          "id": "finalnorm--lmhead",
+          "source": "finalnorm",
+          "target": "lmhead",
+          "label": "matrix product",
+          "operation": "Multiply normalized hidden vectors by the vocabulary projection.",
+          "equation": "[B,T,D]\\times[D,V]\\to[B,T,V]",
+          "shape": ["B", "T", "V"],
+          "description": "Multiply normalized hidden vectors by the vocabulary projection.",
+          "kind": "flow"
+        },
+        {
+          "id": "lmhead--sample",
+          "source": "lmhead",
+          "target": "sample",
+          "label": "last position",
+          "operation": "Slice the last time position before generation.",
+          "shape": ["B", "V"],
+          "description": "Slice the last time position before generation.",
+          "kind": "flow"
+        },
+        {
+          "id": "sample--decode",
+          "source": "sample",
+          "target": "decode",
+          "label": "token ID",
+          "operation": "Decode the selected vocabulary ID.",
+          "shape": ["B", "1"],
+          "description": "Decode the selected vocabulary ID.",
+          "kind": "flow"
+        }
+      ],
+      "layout": {
+        "direction": "RIGHT",
+        "positions": {}
+      }
+    },
+    {
+      "id": "memory",
+      "title": "Memory beyond the context.",
+      "subtitle": "Bigrams, trigrams, four-grams.",
+      "description": "An illustrative n-gram conditional-memory path inspired by Engram, with a simple demonstration hash. This is an extension study rather than a full reproduction of Engram.",
+      "nodes": [
+        {
+          "id": "ngrams",
+          "kind": "ngrams",
+          "title": "Causal n-gram windows",
+          "subtitle": "Contiguous token IDs · n = 2, 3, 4",
+          "category": "data",
+          "description": "Construct token n-grams ending at the current position using only the available prefix. Do not look ahead to future tokens.",
+          "equation": "g_t^{(n)}=(x_{t-n+1},\\ldots,x_t)",
+          "tensors": [
+            {
+              "name": "token IDs",
+              "shape": ["B", "T"],
+              "role": "input"
+            }
+          ],
+          "notes": [],
+          "sourceIds": ["engram"]
+        },
+        {
+          "id": "hash",
+          "kind": "hash",
+          "title": "Hash addresses",
+          "subtitle": "Deterministic sparse lookup",
+          "category": "memory",
+          "description": "Map each n-gram to an address in a finite learned memory. Hash collisions are possible. The lab uses one FNV-style hash for illustration; Engram uses multiple heads and additional processing.",
+          "equation": "a_t^{(n)}=h_n(g_t^{(n)})\\bmod M",
+          "tensors": [],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "retrieve",
+          "kind": "retrieve",
+          "title": "Retrieve embeddings",
+          "subtitle": "Learned memory vectors",
+          "category": "memory",
+          "description": "Gather trainable vectors at the hashed addresses. This is parameter memory, not stored attention keys and values.",
+          "equation": "m_t=\\operatorname{Concat}_n E_n[a_t^{(n)}]",
+          "tensors": [
+            {
+              "name": "one illustrative bank",
+              "shape": ["M", "E"],
+              "role": "weight"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "context",
+          "kind": "context",
+          "title": "Contextual hidden state",
+          "subtitle": "Dynamic transformer features",
+          "category": "data",
+          "description": "The current hidden state controls whether retrieved local patterns should contribute.",
+          "tensors": [
+            {
+              "name": "X",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "fusion",
+          "kind": "fusion",
+          "title": "Context-aware gated fusion",
+          "subtitle": "Project + gate + residual",
+          "category": "compute",
+          "description": "Project retrieved features to D and use a context-dependent gate before residual fusion. This equation is a simplified explanatory gate, not the complete Engram implementation.",
+          "equation": "Y_t=X_t+\\sigma(q(X_t)^\\top k(m_t))\\,v(m_t)",
+          "tensors": [
+            {
+              "name": "X",
+              "shape": ["B", "T", "D"],
+              "role": "input"
+            },
+            {
+              "name": "Y",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [
+            "The full Engram design also includes tokenizer compression, multi-head hashing and a short convolution. Follow the source for exact architecture details."
+          ],
+          "sourceIds": ["engram"]
+        }
+      ],
+      "edges": [
+        {
+          "id": "ngrams--hash",
+          "source": "ngrams",
+          "target": "hash",
+          "label": "address",
+          "operation": "Hash a local token n-gram.",
+          "shape": [],
+          "description": "Hash a local token n-gram.",
+          "kind": "flow"
+        },
+        {
+          "id": "hash--retrieve",
+          "source": "hash",
+          "target": "retrieve",
+          "label": "gather",
+          "operation": "Look up trainable memory vectors.",
+          "shape": [],
+          "description": "Look up trainable memory vectors.",
+          "kind": "flow"
+        },
+        {
+          "id": "retrieve--fusion",
+          "source": "retrieve",
+          "target": "fusion",
+          "label": "memory features",
+          "operation": "Project retrieved embeddings before gating.",
+          "shape": ["B", "T", "D"],
+          "description": "Project retrieved embeddings before gating.",
+          "kind": "flow"
+        },
+        {
+          "id": "context--fusion",
+          "source": "context",
+          "target": "fusion",
+          "label": "gate + residual",
+          "operation": "Dynamic features condition the memory contribution.",
+          "shape": ["B", "T", "D"],
+          "description": "Dynamic features condition the memory contribution.",
+          "kind": "residual"
+        }
+      ],
+      "layout": {
+        "direction": "RIGHT",
+        "positions": {}
+      }
+    },
+    {
+      "id": "mtp",
+      "title": "Predict beyond the next token.",
+      "subtitle": "An auxiliary training pathway.",
+      "description": "A sequential MTP design inspired by DeepSeek-V3. The standard next-token head remains the main output path. Shifted ground-truth tokens feed the auxiliary modules during training.",
+      "nodes": [
+        {
+          "id": "mainstate",
+          "kind": "mainstate",
+          "title": "Main-model hidden state",
+          "subtitle": "At token position i",
+          "category": "data",
+          "description": "The backbone hidden state is the input to an auxiliary prediction depth.",
+          "tensors": [
+            {
+              "name": "H⁰",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "shifted",
+          "kind": "shifted",
+          "title": "Shifted token embedding",
+          "subtitle": "Training: token i + k",
+          "category": "data",
+          "description": "At depth k, embed the shifted teacher-forced token using the shared embedding matrix. At inference, a proposed token takes this role.",
+          "tensors": [
+            {
+              "name": "shared E",
+              "shape": ["V", "D"],
+              "role": "weight"
+            },
+            {
+              "name": "shifted E",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": ["deepseek"]
+        },
+        {
+          "id": "combine",
+          "kind": "combine",
+          "title": "Normalize + concatenate",
+          "subtitle": "D + D → 2D → D",
+          "category": "compute",
+          "description": "Normalize the previous-depth hidden state and the shifted embedding separately, concatenate them and project back to D.",
+          "equation": "H^{\\prime k}=[\\operatorname{RMSNorm}(H^{k-1});\\operatorname{RMSNorm}(E_{i+k})]M_k",
+          "tensors": [
+            {
+              "name": "Mk (row-vector convention)",
+              "shape": ["2*D", "D"],
+              "role": "weight"
+            },
+            {
+              "name": "H′",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "mtpblock",
+          "kind": "mtpblock",
+          "title": "MTP transformer block",
+          "subtitle": "A depth-specific module",
+          "category": "compute",
+          "description": "Transform the combined representation with its own causal block.",
+          "equation": "H^k=\\operatorname{TRM}_k(H^{\\prime k})",
+          "tensors": [
+            {
+              "name": "H′",
+              "shape": ["B", "T", "D"],
+              "role": "input"
+            },
+            {
+              "name": "Hᵏ",
+              "shape": ["B", "T", "D"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "sharedhead",
+          "kind": "sharedhead",
+          "title": "Shared output head",
+          "subtitle": "Predict token i + k + 1",
+          "category": "output",
+          "description": "Apply the shared vocabulary projection and train against a further future target.",
+          "equation": "Z^k=H^kW_U",
+          "tensors": [
+            {
+              "name": "shared Wu",
+              "shape": ["D", "V"],
+              "role": "weight"
+            },
+            {
+              "name": "logits",
+              "shape": ["B", "T", "V"],
+              "role": "output"
+            }
+          ],
+          "notes": [],
+          "sourceIds": []
+        },
+        {
+          "id": "loss",
+          "kind": "loss",
+          "title": "Auxiliary cross-entropy",
+          "subtitle": "Average valid shifted positions",
+          "category": "output",
+          "description": "Compute the negative log-probability of the target and add weighted auxiliary losses to the main training objective. Invalid tail positions are excluded.",
+          "equation": "\\mathcal{L}=\\mathcal{L}_{\\rm NTP}+\\frac{\\lambda}{K}\\sum_{k=1}^{K}\\mathcal{L}_{\\rm MTP}^{(k)}",
+          "tensors": [],
+          "notes": [
+            "Independent parallel heads are another MTP design. Sequential modules here are a distinct architecture choice.",
+            "Auxiliary modules can be discarded for ordinary inference or used for draft proposals with verification. They do not guarantee multiple accepted tokens per step."
+          ],
+          "sourceIds": ["mtp", "deepseek"]
+        }
+      ],
+      "edges": [
+        {
+          "id": "mainstate--combine",
+          "source": "mainstate",
+          "target": "combine",
+          "label": "previous depth",
+          "operation": "Normalize the previous-depth hidden state.",
+          "shape": ["B", "T", "D"],
+          "description": "Normalize the previous-depth hidden state.",
+          "kind": "flow"
+        },
+        {
+          "id": "shifted--combine",
+          "source": "shifted",
+          "target": "combine",
+          "label": "shifted embedding",
+          "operation": "Normalize and concatenate the known shifted token embedding.",
+          "shape": ["B", "T", "D"],
+          "description": "Normalize and concatenate the known shifted token embedding.",
+          "kind": "flow"
+        },
+        {
+          "id": "combine--mtpblock",
+          "source": "combine",
+          "target": "mtpblock",
+          "label": "project 2D → D",
+          "operation": "Linear projection of the concatenated features.",
+          "shape": ["B", "T", "D"],
+          "description": "Linear projection of the concatenated features.",
+          "kind": "flow"
+        },
+        {
+          "id": "mtpblock--sharedhead",
+          "source": "mtpblock",
+          "target": "sharedhead",
+          "label": "future representation",
+          "operation": "Pass depth-specific hidden features to the shared head.",
+          "shape": ["B", "T", "D"],
+          "description": "Pass depth-specific hidden features to the shared head.",
+          "kind": "flow"
+        },
+        {
+          "id": "sharedhead--loss",
+          "source": "sharedhead",
+          "target": "loss",
+          "label": "future target",
+          "operation": "Train against the token at i+k+1.",
+          "shape": ["B", "T", "V"],
+          "description": "Train against the token at i+k+1.",
+          "kind": "flow"
+        }
+      ],
+      "layout": {
+        "direction": "RIGHT",
+        "positions": {}
+      }
+    }
+  ],
+  "ui": {
+    "activeGraph": "overview",
+    "theme": "dark",
+    "prompt": "The future is beautifully complex.",
+    "notes": "My architecture notes\n\nClick a component or connection to inspect it. Drag nodes to arrange your own view. Export JSON to share the complete model and its layouts."
+  }
+}
