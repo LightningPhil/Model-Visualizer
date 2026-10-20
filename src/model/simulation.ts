@@ -55,9 +55,9 @@ export type SimulationTrace = {
   options: SimulationOptions
   frames: SimulationFrame[]
 }
-export interface ExecutionAdapter {
+export interface ExecutionAdapter<Options = SimulationOptions, Trace = SimulationTrace> {
   id: string
-  run(config: ModelConfig, options: SimulationOptions): SimulationTrace
+  run(config: ModelConfig, options: Options): Trace
 }
 
 /** Fixed abstract target sequence. Numbers identify opaque visual packets;

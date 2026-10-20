@@ -202,9 +202,9 @@ export function dimensions(config: ModelConfig, tokenCount = 12, decode = false)
   }
 }
 
-export function parseDocument(input: unknown): ModelDocument {
-  const doc = documentSchema.parse(input)
-  const c = doc.config
+/** Shared foundations-profile constraints for documents and executable adapters. */
+export function parseModelConfig(input: unknown): ModelConfig {
+  const c = configSchema.parse(input)
   if (
     c.kvCache &&
     c.kvCache.mode !== 'full' &&
@@ -226,6 +226,12 @@ export function parseDocument(input: unknown): ModelDocument {
     throw new Error(
       'GQA requires more than one and fewer than Hq KV heads. Use MHA or MQA at the endpoints.',
     )
+  return c
+}
+
+export function parseDocument(input: unknown): ModelDocument {
+  const doc = documentSchema.parse(input)
+  const c = parseModelConfig(doc.config)
   const graphIds = new Set(doc.graphs.map((g) => g.id))
   if (graphIds.size !== doc.graphs.length) throw new Error('Graph IDs must be unique.')
   if (!graphIds.has(doc.ui.activeGraph)) throw new Error('The active graph does not exist.')

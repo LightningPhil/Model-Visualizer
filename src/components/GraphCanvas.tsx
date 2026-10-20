@@ -1,4 +1,4 @@
-import { memo, useEffect } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -244,14 +244,24 @@ function Canvas(props: DiagramProps) {
   useEffect(() => {
     props.onReady?.(!busy && edges.length === graph.edges.length && Boolean(nodes.length))
   }, [busy, edges.length, graph.edges.length, nodes.length, props.onReady])
+  const consumedFocus = useRef<{ id: string; revision: number } | undefined>(undefined)
   useEffect(() => {
-    if (!props.focus || busy || !edges.length) return
+    if (
+      !props.focus ||
+      busy ||
+      !edges.length ||
+      (consumedFocus.current?.id === props.focus.id &&
+        consumedFocus.current.revision === props.focus.revision)
+    )
+      return
     const node = nodes.find((n) => n.id === props.focus!.id)
-    if (node)
+    if (node) {
+      consumedFocus.current = props.focus
       void flow.setCenter(node.position.x + NODE_WIDTH / 2, node.position.y + NODE_HEIGHT / 2, {
         zoom: Math.max(0.55, Math.min(0.9, flow.getZoom())),
         duration: props.execution?.playing ? 180 : 350,
       })
+    }
     // Routing and focus revisions matter; ordinary selection/viewport changes do not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.focus?.id, props.focus?.revision, busy, edges.length])

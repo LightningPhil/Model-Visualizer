@@ -6,6 +6,7 @@ import {
   CircleHelp,
   Copy,
   FileText,
+  FlaskConical,
   Shapes,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -20,6 +21,7 @@ import {
 } from '../model/schema'
 import type { Selection } from './GraphCanvas'
 import { expandWholeModel } from '../model/whole-model'
+import { numericalExampleFor } from '../model/numerics/examples'
 
 type Props = {
   doc: ModelDocument
@@ -30,6 +32,7 @@ type Props = {
   onOpen: (id: string) => void
   onNotes: (notes: string) => void
   notify: (message: string) => void
+  onNumerical: (entry: string) => void
 }
 
 function TensorCard({
@@ -79,6 +82,7 @@ export function Inspector({
   onOpen,
   onNotes,
   notify,
+  onNumerical,
 }: Props) {
   const [tab, setTab] = useState<'inspect' | 'notes'>('inspect')
   const graph = expandWholeModel(
@@ -91,6 +95,19 @@ export function Inspector({
     selection?.type === 'edge' ? graph.edges.find((e) => e.id === selection.id) : undefined
   const title = component?.title ?? connection?.label ?? 'Explore the architecture'
   const equation = component?.equation ?? connection?.equation
+  const example =
+    numericalExampleFor(
+      graph.id,
+      component ?? graph.nodes.find((n) => n.id === connection?.target),
+      layer,
+    ) ??
+    (connection
+      ? numericalExampleFor(
+          graph.id,
+          graph.nodes.find((n) => n.id === connection.source),
+          layer,
+        )
+      : undefined)
 
   async function copyEquation() {
     if (!equation) return
@@ -163,6 +180,15 @@ export function Inspector({
             <button className="explore-button" onClick={() => onOpen(component.childGraph!)}>
               Explore inside
               <ArrowUpRight size={16} />
+            </button>
+          )}
+          {example && (
+            <button className="numerical-example-button" onClick={() => onNumerical(example)}>
+              <FlaskConical size={15} />
+              <span>
+                Try a numerical example<small>Tiny reference model · untrained weights</small>
+              </span>
+              <ArrowUpRight size={14} />
             </button>
           )}
           {equation && (

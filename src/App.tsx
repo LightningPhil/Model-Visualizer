@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -50,12 +50,24 @@ import { useSimulation } from './components/useSimulation'
 import { SimulationPanel, SimulationStrip } from './components/SimulationPanel'
 import { configurationLayouts } from './model/configuration-layouts'
 import { upgradeCachePolicies } from './model/policy-upgrade'
+import { upgradeTeachingProvenance } from './model/teaching-provenance'
 import { cachePolicyLabel, residentCount, kvHeadFor } from './model/attention'
 import { CachePolicyControls } from './components/CachePolicyControls'
+import { NUMERICAL_SESSION_KEY } from './model/numerics/identity'
+import type { NumericalSession } from './model/numerics/session'
+
+const NumericalWorkbench = lazy(() =>
+  import('./components/numerical/NumericalWorkbench').then((module) => ({
+    default: module.NumericalWorkbench,
+  })),
+)
 
 const referenceDocument = parseDocument(starter)
 const upgrade = (doc: ModelDocument) =>
-  addWholeModelView(upgradeCachePolicies(doc, referenceDocument), referenceDocument)
+  addWholeModelView(
+    upgradeTeachingProvenance(upgradeCachePolicies(doc, referenceDocument), referenceDocument),
+    referenceDocument,
+  )
 
 const labels: Record<string, string> = {
   overview: 'Architecture overview',
@@ -94,7 +106,8 @@ export default function App() {
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [mobileNav, setMobileNav] = useState(false)
   const [labOpen, setLabOpen] = useState(true)
-  const [modal, setModal] = useState<'guide' | 'search' | 'config' | null>(null)
+  const [modal, setModal] = useState<'guide' | 'search' | 'config' | 'numerical' | null>(null)
+  const [numericalEntry, setNumericalEntry] = useState<string>()
   const [guideTab, setGuideTab] = useState<'guide' | 'sources' | 'format'>('guide')
   const [query, setQuery] = useState('')
   const [toast, setToast] = useState('')
@@ -103,6 +116,14 @@ export default function App() {
   const [selectedLayer, setSelectedLayer] = useState(0)
   const [selectedHead, setSelectedHead] = useState(0)
   const fileInput = useRef<HTMLInputElement>(null)
+  const saveNumericalSession = useCallback(
+    (session: NumericalSession) =>
+      setDoc((current) => ({
+        ...current,
+        extensions: { ...current.extensions, [NUMERICAL_SESSION_KEY]: session },
+      })),
+    [],
+  )
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const authoredGraph = doc.graphs.find((g) => g.id === doc.ui.activeGraph)!
@@ -368,32 +389,48 @@ export default function App() {
             </span>
             <ChevronDown size={13} />
           </button>
-          {wholeModel && (
-            <div className="journey-navigation">
-              <button
-                className={`journey-button ${whole && !simulating ? 'active' : ''}`}
-                onClick={() => openGraph(wholeModel.id)}
-              >
-                <Network size={17} />
-                <span>
-                  Whole model<small>Every layer on one canvas</small>
-                </span>
-              </button>
-              <button
-                className={`journey-button ${simulating ? 'active' : ''}`}
-                onClick={() => {
-                  openGraph(whole ? graph.id : wholeModel.id)
-                  setSimulating(true)
-                  setInspectorOpen(true)
-                }}
-              >
-                <Play size={16} />
-                <span>
-                  Run simulation<small>Follow the execution</small>
-                </span>
-              </button>
-            </div>
-          )}
+          <div className="journey-navigation">
+            {wholeModel && (
+              <>
+                <button
+                  className={`journey-button ${whole && !simulating ? 'active' : ''}`}
+                  onClick={() => openGraph(wholeModel.id)}
+                >
+                  <Network size={17} />
+                  <span>
+                    Whole model<small>Every layer on one canvas</small>
+                  </span>
+                </button>
+                <button
+                  className={`journey-button ${simulating ? 'active' : ''}`}
+                  onClick={() => {
+                    openGraph(whole ? graph.id : wholeModel.id)
+                    setSimulating(true)
+                    setInspectorOpen(true)
+                  }}
+                >
+                  <Play size={16} />
+                  <span>
+                    Run simulation<small>Follow the execution</small>
+                  </span>
+                </button>
+              </>
+            )}
+            <button
+              className="journey-button numerical-entry"
+              onClick={() => {
+                sim.setPlaying(false)
+                setNumericalEntry(undefined)
+                setMobileNav(false)
+                setModal('numerical')
+              }}
+            >
+              <FlaskConical size={17} />
+              <span>
+                Tensor laboratory<small>Run the mathematics</small>
+              </span>
+            </button>
+          </div>
           <div className="nav-section-title">
             <span className="eyebrow">EXPLORE THE MODEL</span>
             <small>
@@ -860,6 +897,11 @@ export default function App() {
               onOpen={openGraph}
               onNotes={(notes) => setDoc({ ...doc, ui: { ...doc.ui, notes } })}
               notify={notify}
+              onNumerical={(entry) => {
+                sim.setPlaying(false)
+                setNumericalEntry(entry)
+                setModal('numerical')
+              }}
             />
           )}
       {toast && (
@@ -872,6 +914,30 @@ export default function App() {
         </div>
       )}
 
+      {modal === 'numerical' && (
+        <Suspense
+          fallback={
+            <Dialog title="Opening the tensor laboratory…" onClose={() => setModal(null)}>
+              <p className="modal-description">Preparing the local numerical model.</p>
+            </Dialog>
+          }
+        >
+          <NumericalWorkbench
+            doc={doc}
+            reference={referenceDocument}
+            initialEntry={numericalEntry}
+            onSave={saveNumericalSession}
+            onClose={() => setModal(null)}
+            onTheme={() =>
+              setDoc((current) => ({
+                ...current,
+                ui: { ...current.ui, theme: current.ui.theme === 'dark' ? 'light' : 'dark' },
+              }))
+            }
+            notify={notify}
+          />
+        </Suspense>
+      )}
       {modal === 'config' && (
         <Dialog title="Shape the teaching model." onClose={() => setModal(null)}>
           <p className="modal-description">
@@ -1089,19 +1155,33 @@ export default function App() {
                 <div className="guide-callout">
                   <FlaskConical size={20} />
                   <div>
-                    <strong>Structure is real. Activations are illustrative.</strong>
+                    <strong>Explore structure. Inspect numerical reference values.</strong>
                     <p>
                       The BPE tokenizer runs locally. Tensor dimensions and cache byte counts are
-                      calculated. The attention heatmap uses deterministic synthetic probabilities.
-                      This app does not run a trained language model.
+                      calculated. Study heatmaps and graphical MTP choices are illustrative. The
+                      separate tensor laboratory executes a small transformer with seeded, untrained
+                      weights and explains its actual tensor values. No trained language model or
+                      inference service is used.
                     </p>
+                    <button
+                      className="numerical-example-button"
+                      onClick={() => {
+                        setNumericalEntry(undefined)
+                        setModal('numerical')
+                      }}
+                    >
+                      <FlaskConical size={15} /> Open tensor laboratory <ArrowUpRight size={14} />
+                    </button>
                   </div>
                 </div>
-                <h3>Three ways to explore</h3>
+                <h3>Ways to explore</h3>
                 <ol>
                   <li>Select a component to inspect its inputs, outputs, weights and LaTeX.</li>
                   <li>Select a connection to see the mathematical operation it represents.</li>
                   <li>Open a component with an expand icon to explore the graph inside.</li>
+                  <li>
+                    Try a numerical example, then select a matrix cell and follow its operands.
+                  </li>
                 </ol>
                 <h3>Make a view yours</h3>
                 <p>

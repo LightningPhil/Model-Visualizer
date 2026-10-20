@@ -15,6 +15,8 @@ import type { AvoidEngine } from '../src/model/avoid'
 import type { ModelGraph } from '../src/model/schema'
 import { clearDrop } from '../src/components/useDiagram'
 import { isWholeModel, expandWholeModel } from '../src/model/whole-model'
+import { numericalGraph } from '../src/model/numerics/session'
+import { defaultNumericalSettings } from '../src/model/numerics/engine'
 
 let engine: AvoidEngine
 const document = parseDocument(starter)
@@ -24,6 +26,18 @@ beforeAll(async () => {
 })
 
 describe('complete diagram layout', () => {
+  for (const attention of ['MHA', 'GQA', 'MQA'] as const)
+    for (const direction of ['RIGHT', 'DOWN'] as const)
+      it(`numerical ${attention} ${direction}: every link and annotation stays clear`, async () => {
+        const graph = numericalGraph(
+            document,
+            { ...defaultNumericalSettings, attention },
+            { direction, positions: {} },
+          ),
+          plan = await planLayout(engine, graph, direction)
+        expect(routingProblems(graph, plan.positions, plan.routing)).toEqual([])
+        expect(Object.keys(plan.routing.edges)).toHaveLength(graph.edges.length)
+      }, 30000)
   for (const graph of document.graphs
     .filter((g) => !isWholeModel(g))
     .map((g) => expandWholeModel(document, g)))

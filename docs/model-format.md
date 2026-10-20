@@ -112,3 +112,11 @@ When extending the contract, update the runtime schema, generated JSON Schema, p
 ### Attention and cache additions
 
 Optional `config.kvCache` selects full, sliding-window or fixed-anchor sparse retention; omission preserves existing full semantics. The named P and R axes may be zero for an empty cache; all other dimension results remain positive. Split-head and whole-model variant recipes preserve independent layouts using compiled IDs. See [the complete definitions, examples, migration behavior and primary sources](attention-and-cache.md). Omission preserves full-prefix semantics. Earlier bundled workspaces receive a version-marked migration of cache axes and transient paths while retaining IDs, notes, geometry and extension metadata. Unknown extension versions are preserved.
+
+### Numerical laboratory extension
+
+The optional document extension `model-visualizer.numerical-lab` has its own `version: 1`. It stores `settings` (seed, input IDs, output count, head sharing, cache policy, selection method, temperature), `layout`, a `layouts` record for previous head-sharing topologies, `bookmarks`, `notes` and optional `pinned` baseline settings. Its geometry references the same stable expanded foundations IDs, but belongs to the separate numerical profile. It does not overwrite `config`, authored graph layouts or `ui.notes`.
+
+The laboratory runtime validates this namespace independently. Unsupported versions/fields remain intact and cause a temporary session that does not overwrite the saved extension. Tensor arrays and parameter values belong to a separate trace export, not the model document. The ordinary v1 document contract is unchanged. See [the full numerical semantics and trace format](numerical-laboratory.md).
+
+The `model-visualizer.teaching-provenance-version: 1` marker records a stock-text clarification: S means processed extent, while R/P/U describe retained and working positions; graphical MTP choices are illustrative, and the numerical reference uses untrained weights. Its migration replaces only exact known older stock paragraphs/notes with current authored wording. Edited prose, notebooks, layout geometry, IDs and other metadata remain intact. Unknown versions are preserved.

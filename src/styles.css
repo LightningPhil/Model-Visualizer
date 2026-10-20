@@ -825,6 +825,36 @@ h1 {
   min-height: 200px;
   border-top: 1px solid var(--border-soft);
 }
+.numerical-example-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--violet) 35%, var(--border));
+  background: var(--violet-bg);
+  border-radius: 6px;
+  color: var(--violet);
+  text-align: left;
+  font-size: 11px;
+}
+.numerical-example-button span {
+  flex: 1;
+}
+.numerical-example-button small {
+  display: block;
+  color: var(--muted);
+  font-size: 8px;
+  margin-top: 5px;
+  line-height: 1.6;
+}
+.numerical-entry {
+  border-color: color-mix(in srgb, var(--violet) 38%, var(--border));
+}
+.numerical-entry > svg {
+  color: var(--violet);
+}
 .graph-canvas {
   position: absolute;
   inset: 0;

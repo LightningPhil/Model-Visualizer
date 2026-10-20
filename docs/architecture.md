@@ -10,6 +10,8 @@
 | `src/model/whole-model.ts`                               | Deterministic whole-model expansion from authored recipes and source templates                                |
 | `src/model/group-layout.ts`                              | Stage-local layout/routing plus fixed-obstacle inter-stage routing for expanded models                        |
 | `src/model/simulation.ts`                                | Renderer-neutral graphical execution trace, causal verification scenarios and KV-state accounting             |
+| `src/model/numerics/`                                    | Local numerical reference operations, actual tensors and scalar provenance; independent laboratory sessions   |
+| `src/components/numerical/`                              | Numerical playback, tensor slicing, operation diagrams, head comparisons and experiment notebook              |
 | `src/components/SimulationPanel.tsx`, `useSimulation.ts` | Packet/state visualization, playback, timeline, step detail and camera follow                                 |
 | `src/model/layout.ts`                                    | ELK arrangements scored using the complete routed diagram                                                     |
 | `src/model/routing.ts`, `geometry.ts`                    | Distinct ports, obstacle-aware libavoid routing, label placement, geometry checks and bounds                  |
@@ -74,7 +76,7 @@ The full-prefix logical KV size is `2 × L × B × Hkv × S × Dh × scalarBytes
 
 **Attention architecture:** MHA/GQA/MQA use the same dense logical state representation. MLA requires a new cache representation and configuration profile, not relabelled GQA. Full, fixed-anchor sparse and sliding-window policies now have explicit masks, absolute positions and retention accounting in `attention.ts`. Other sparse/linear patterns still require their own state semantics. See [attention and cache](attention-and-cache.md).
 
-**Actual traces:** the new graphical execution adapter and frame types establish a renderer-neutral playback boundary, with provenance and stable component IDs. Only illustrative execution is currently implemented. A numerical/measured adapter still needs a validated external trace schema keyed by document/model hash, layer, head, step and tensor name, with dtype, positions and sampling/downsampling metadata. Keep large arrays out of layout files. Never replace synthetic examples silently with inferred data.
+**Actual traces:** the generic execution adapter now supports graphical and local numerical reference traces with explicit provenance and stable component IDs. The separate tensor laboratory executes a small, seeded **untrained** foundations profile, records actual arrays and absolute position maps, and explains individual cells through operation recipes. It reuses authored architecture templates and owns separate experiment geometry/settings in a versioned extension. It does not execute arbitrary imported models. A measured/checkpoint adapter still needs a validated external schema keyed by model identity, layer, head, step and tensor name, with dtype, positions and sampling/downsampling metadata. Keep large arrays in separate trace artifacts. See [the numerical laboratory](numerical-laboratory.md).
 
 **MoE:** add router, scores, top-k selection, per-expert FFNs, dispatch/combine and optional shared experts. Distinguish total parameters from activated parameters. A static branching diagram alone is insufficient to demonstrate token-specific routing.
 

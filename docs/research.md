@@ -6,6 +6,8 @@ Research checked on **20 October 2026**. This map separates the implemented teac
 
 The app models a decoder-only, causal, pre-RMSNorm transformer with RoPE and SwiGLU. Its detailed flow uses separate matrix products, head reshapes, positional rotations, masked attention, head concatenation, output projection and residual additions. The main decoder repeats L times with distinct parameters. [Transformer foundation](https://arxiv.org/abs/1706.03762), [RMSNorm](https://arxiv.org/abs/1910.07467), [RoPE](https://arxiv.org/abs/2104.09864), [GLU variants](https://arxiv.org/abs/2002.05202).
 
+The [tensor laboratory](numerical-laboratory.md) now executes a small separate version of this profile with actual values from seeded, untrained parameters. It includes scalar provenance, parameter inspection, independent heads, vocabulary selection and cached decoding for full, sliding and fixed-anchor sparse retention. The architecture study heatmaps and graphical MTP scenarios retain their explicit illustrative labels. Neither mode claims trained-model activations.
+
 For row-vector notation, `X: [B,T,D]`, `Wq: [D,Hq·Dh]`, `Wk/Wv: [D,Hkv·Dh]`, and `Wo: [Hq·Dh,D]`. The query-head output contracts the sequence axis when averaging values. Residual sums and SwiGLU's Hadamard product do not contract axes. This notation is our presentation convention; it may transpose weight matrices relative to a source implementation.
 
 ## Component taxonomy and interaction design
@@ -51,7 +53,7 @@ The [Mistral 7B paper](https://arxiv.org/abs/2310.06825) is the primary source f
 
 ## KV cache conventions
 
-The bundled graph uses a logical all-layer view of K and V, each `[L,B,Hkv,S,Dh]`. Implementations can store one tensor per layer, transpose axes, use paged blocks, shard heads or quantize storage. These choices must be recorded independently from semantic axes. Our view uses one selected layer/head plane; it is not a representation of nested tables.
+The bundled graph uses a logical all-layer view of K and V, each `[L,B,Hkv,R,Dh]`, with an absolute-position map. R equals the processed extent S under full retention and can be smaller under sliding or sparse retention. Implementations can store one tensor per layer, transpose axes, use paged blocks, shard heads or quantize storage. These choices must be recorded independently from semantic axes. Our view uses one selected layer/head plane; it is not a representation of nested tables.
 
 Prefill computes multiple queries while applying a causal mask. Ordinary decode computes one new query and appends that layer's new K/V at the proper absolute position. Earlier layer-specific K/V are reused. The dense logical byte formula excludes physical allocation overhead. Sliding-window eviction, prefix sharing, padding, quantization metadata and device distribution require separate accounting.
 
@@ -63,7 +65,7 @@ The memory lab exposes causal bigrams, trigrams and four-grams over token IDs. I
 
 [Independent multi-token heads](https://arxiv.org/abs/2404.19737) and [sequential MTP modules](https://arxiv.org/html/2412.19437v2) are distinct designs. The current study illustrates the latter: previous-depth state plus a shifted embedding, then a depth-specific block and shared output projection. The alignment lab labels teacher-forced inputs and targets, and excludes unavailable targets. Auxiliary training modules need not run during ordinary inference. Speculative proposals require verification before tokens are accepted.
 
-Output token IDs are **decoded** back to bytes/text; they are not re-encoded. A generated ID is appended to the model's sequence for another inference step. The workbench currently explains that loop without running weights or claiming sampled model output.
+Output token IDs are **decoded** back to bytes/text; they are not re-encoded. A generated ID is appended to the model's sequence for another inference step. The graphical simulator explains that loop with abstract packets and scripted choices. The numerical laboratory executes seeded untrained weights and samples opaque vocabulary IDs locally; it has no language tokenizer or trained language knowledge.
 
 ## Recommended implementation sequence
 
@@ -71,7 +73,7 @@ Output token IDs are **decoded** back to bytes/text; they are not re-encoded. A 
 2. **Exact tokenizer lab:** user-specified tokenizer adapter, original ranks/config, precise span alignment and specialized operations. Preserve the current adapter boundary.
 3. **Named model documents:** pinned official model revision/config, real parameter dimensions, documented discrepancies, verified per-model sources.
 4. **New architecture profiles:** MLA, MoE routing and additional sparse/linear patterns with proper state schemas and masks. Migrate versioned documents where necessary.
-5. **Trace playback:** import real tensor/activation traces separately from model/layout files, validate their provenance and shapes, then add token/head/layer/step playback.
+5. **Measured trace import:** extend existing graphical and numerical playback with separately imported checkpoint traces; validate model identity, provenance, shapes and absolute positions.
 6. **Comparisons and scale:** graph diff, reusable subgraphs, port-aware validation, large-model level-of-detail rendering, shared layout libraries and version migrations.
 
 This sequence is an engineering recommendation based on the user's scope and the boundaries identified above; it is not a claim made by the cited papers.

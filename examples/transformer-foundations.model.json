@@ -4,7 +4,7 @@
   "id": "transformer-foundations",
   "name": "Transformer foundations",
   "description": "A small, inspectable decoder-only transformer. An educational architecture, not a trained checkpoint.",
-  "documentation": "Start at the architecture overview, then open a block or inspect an edge. Symbolic axes are B (batch), T (current query positions), S (visible key positions), D (hidden width), Hq (query heads), Hkv (KV heads), Dh (features per head), F (FFN width), V (vocabulary) and L (layers). The workbench computes exact dimensions and a real demo BPE trace. Attention probabilities are synthetic examples; no trained model weights are loaded. Optional memory and MTP views illustrate separate architecture extensions. Model definitions, equations, citations, notes, positions and viewports travel together in this versioned JSON document.",
+  "documentation": "Start at the architecture overview, then open a block or inspect an edge. Symbolic axes are B (batch), T (current query positions), S (absolute processed extent), R (retained positions after a call), P (retained prefix positions before a call), U (working keys P + T), D (hidden width), Hq (query heads), Hkv (KV heads), Dh (features per head), F (FFN width), V (vocabulary) and L (layers). The workbench computes exact dimensions and a real demo BPE trace. Study attention heatmaps are synthetic examples. The separate numerical laboratory calculates actual reference values using seeded, untrained parameters. The graphical simulator uses abstract packets and scripted MTP choices. No trained model weights are loaded. Optional memory and MTP views explain separate architecture extensions. Model definitions, equations, citations, notes, positions and viewports travel together in this versioned JSON document.",
   "config": {
     "dModel": 512,
     "nLayers": 6,
@@ -2160,7 +2160,7 @@
             }
           ],
           "notes": [
-            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+            "Graphical simulation uses abstract packets and scripted choices. The separate numerical laboratory runs seeded, untrained autoregressive weights; numerical MTP is not implemented."
           ],
           "sourceIds": ["deepseek", "speculative"]
         },
@@ -2180,7 +2180,7 @@
             }
           ],
           "notes": [
-            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+            "Graphical simulation uses abstract packets and scripted choices. The separate numerical laboratory runs seeded, untrained autoregressive weights; numerical MTP is not implemented."
           ],
           "sourceIds": ["deepseek", "speculative"]
         },
@@ -2200,7 +2200,7 @@
             }
           ],
           "notes": [
-            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+            "Graphical simulation uses abstract packets and scripted choices. The separate numerical laboratory runs seeded, untrained autoregressive weights; numerical MTP is not implemented."
           ],
           "sourceIds": ["deepseek", "speculative"]
         },
@@ -2220,7 +2220,7 @@
             }
           ],
           "notes": [
-            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+            "Graphical simulation uses abstract packets and scripted choices. The separate numerical laboratory runs seeded, untrained autoregressive weights; numerical MTP is not implemented."
           ],
           "sourceIds": ["deepseek", "speculative"]
         },
@@ -2240,7 +2240,7 @@
             }
           ],
           "notes": [
-            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+            "Graphical simulation uses abstract packets and scripted choices. The separate numerical laboratory runs seeded, untrained autoregressive weights; numerical MTP is not implemented."
           ],
           "sourceIds": ["deepseek", "speculative"]
         },
@@ -2265,7 +2265,7 @@
             }
           ],
           "notes": [
-            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+            "Graphical simulation uses abstract packets and scripted choices. The separate numerical laboratory runs seeded, untrained autoregressive weights; numerical MTP is not implemented."
           ],
           "sourceIds": ["deepseek", "speculative"]
         },
@@ -2285,7 +2285,7 @@
             }
           ],
           "notes": [
-            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+            "Graphical simulation uses abstract packets and scripted choices. The separate numerical laboratory runs seeded, untrained autoregressive weights; numerical MTP is not implemented."
           ],
           "sourceIds": ["deepseek", "speculative"]
         },
@@ -2305,7 +2305,7 @@
             }
           ],
           "notes": [
-            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+            "Graphical simulation uses abstract packets and scripted choices. The separate numerical laboratory runs seeded, untrained autoregressive weights; numerical MTP is not implemented."
           ],
           "sourceIds": ["deepseek", "speculative"]
         },
@@ -2325,7 +2325,7 @@
             }
           ],
           "notes": [
-            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+            "Graphical simulation uses abstract packets and scripted choices. The separate numerical laboratory runs seeded, untrained autoregressive weights; numerical MTP is not implemented."
           ],
           "sourceIds": ["deepseek", "speculative"]
         },
@@ -2350,7 +2350,7 @@
             }
           ],
           "notes": [
-            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+            "Graphical simulation uses abstract packets and scripted choices. The separate numerical laboratory runs seeded, untrained autoregressive weights; numerical MTP is not implemented."
           ],
           "sourceIds": ["deepseek", "speculative"]
         },
@@ -2375,7 +2375,7 @@
             }
           ],
           "notes": [
-            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+            "Graphical simulation uses abstract packets and scripted choices. The separate numerical laboratory runs seeded, untrained autoregressive weights; numerical MTP is not implemented."
           ],
           "sourceIds": ["deepseek", "speculative"]
         },
@@ -2395,7 +2395,7 @@
             }
           ],
           "notes": [
-            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+            "Graphical simulation uses abstract packets and scripted choices. The separate numerical laboratory runs seeded, untrained autoregressive weights; numerical MTP is not implemented."
           ],
           "sourceIds": ["deepseek", "speculative"]
         },
@@ -2420,7 +2420,7 @@
             }
           ],
           "notes": [
-            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+            "Graphical simulation uses abstract packets and scripted choices. The separate numerical laboratory runs seeded, untrained autoregressive weights; numerical MTP is not implemented."
           ],
           "sourceIds": ["deepseek", "speculative"]
         },
@@ -2440,7 +2440,7 @@
             }
           ],
           "notes": [
-            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+            "Graphical simulation uses abstract packets and scripted choices. The separate numerical laboratory runs seeded, untrained autoregressive weights; numerical MTP is not implemented."
           ],
           "sourceIds": ["deepseek", "speculative"]
         },
@@ -2460,7 +2460,7 @@
             }
           ],
           "notes": [
-            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+            "Graphical simulation uses abstract packets and scripted choices. The separate numerical laboratory runs seeded, untrained autoregressive weights; numerical MTP is not implemented."
           ],
           "sourceIds": ["deepseek", "speculative"]
         },
@@ -2480,7 +2480,7 @@
             }
           ],
           "notes": [
-            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+            "Graphical simulation uses abstract packets and scripted choices. The separate numerical laboratory runs seeded, untrained autoregressive weights; numerical MTP is not implemented."
           ],
           "sourceIds": ["deepseek", "speculative"]
         }
@@ -2829,6 +2829,7 @@
     "notes": "My architecture notes\n\nClick a component or connection to inspect it. Drag nodes to arrange your own view. Export JSON to share the complete model and its layouts."
   },
   "extensions": {
-    "model-visualizer.cache-policy-version": 1
+    "model-visualizer.cache-policy-version": 1,
+    "model-visualizer.teaching-provenance-version": 1
   }
 }

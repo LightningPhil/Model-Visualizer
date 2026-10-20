@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url'
 
 export default defineConfig({
   plugins: [react()],
+  // Formatters can briefly truncate a module while rewriting it on Windows.
+  // Wait for stable content before transforming/caching a hot update.
+  server: { watch: { awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 20 } } },
   worker: { format: 'es' },
   resolve: {
     alias: [

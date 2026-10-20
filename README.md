@@ -28,6 +28,7 @@ The browser tests launch their own Vite server on port 5200. Set `PLAYWRIGHT_PRE
 
 - **Whole model:** one expanded canvas with 252 components and 358 connections in the default teaching configuration. Every main decoder layer, query-head result and KV-head slice appears explicitly, alongside tokenization, feed-forward paths, output and the generation loop. Jump between stages, zoom, drag, auto-layout and save the complete map.
 - **Graphical simulation:** abstract packets flow through the model with play/pause, reversible steps, a timeline and camera follow. Switch ordinary decoding or two MTP depths; see proposals, causal verification, accepted prefixes, rejected suffixes, KV rollback and committed output. Text input is not required.
+- **Tensor laboratory:** run a small local transformer with seeded, untrained weights. Watch prefill and cached decoding, inspect actual activations, select any matrix cell and follow every product back to its operands. Explore RMSNorm, RoPE rotations, independent attention heads, masks, softmax, SwiGLU and vocabulary selection. Pin experiments for cell comparisons, bookmark operations and save a separate laboratory notebook.
 - **Eleven study views:** the original architecture, tokenizer, transformer block, attention, KV cache, feed-forward, output, n-gram memory and MTP views, plus generation/verification and fully split attention heads.
 - **79 authored components:** graph templates and an expansion recipe supply explanations, tensor dimensions, LaTeX and primary sources. Click an edge label to inspect its operation.
 - **Real teaching BPE:** edit the prompt; see UTF-8 bytes, token IDs and every ranked merge. Unicode round-trips losslessly.
@@ -45,6 +46,10 @@ The bundled **Transformer foundations** document is a teaching architecture: six
 
 The tokenizer executes an explicit, small byte-BPE vocabulary. Tensor dimensions and logical KV bytes are calculated. Attention heatmaps are deterministic synthetic examples. The graphical simulator uses abstract packets and scripted reference choices; it does **not** compute logits, execute trained weights or generate language. Its renderer-neutral execution trace keeps numerical/local-model adapters possible without coupling them to the canvas. The n-gram path is an illustrative, inactive extension in the simulator. The MTP study view explains auxiliary training; generation and verification are shown separately.
 
+The separate **tensor laboratory** executes a two-layer, width-16 reference model with actual Float32 tensors and JavaScript Number accumulation. Its input/output are opaque vocabulary IDs and its parameters are **untrained**. It computes real logits and attention probabilities, without claiming trained-model activations, meaningful language or GPU-kernel equivalence. MHA/GQA/MQA and full/sparse/sliding cache experiments are supported. Numerical MTP and arbitrary imported model execution are future work; the existing graphical MTP simulator remains available. [Explore the numerical profile, provenance and saving format](docs/numerical-laboratory.md).
+
+![The numerical laboratory: actual tensors and rotary-position calculations from an untrained reference model](docs/images/numerical-laboratory-dark.png)
+
 MLA, MoE, more advanced sparse patterns, arbitrary tokenizer plugins and real activation traces are researched extension points, not completed inference features. The [research map](docs/research.md) distinguishes their semantics and the work needed to add them.
 
 ## Model documents and future development
@@ -56,6 +61,7 @@ The authored source of truth is [`examples/transformer-foundations.model.json`](
 - [Software architecture and extension boundaries](docs/architecture.md)
 - [Graphical execution and future numerical adapters](docs/simulation.md)
 - [Independent attention heads and KV retention policies](docs/attention-and-cache.md)
+- [Numerical laboratory, scalar provenance and experiment format](docs/numerical-laboratory.md)
 - [Machine-readable JSON Schema](examples/model.schema.json)
 - [Repository instructions for future agents](AGENTS.md)
 
