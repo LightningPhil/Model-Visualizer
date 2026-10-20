@@ -3,6 +3,7 @@ import type { AvoidEngine } from './avoid'
 import type { ELK } from 'elkjs/lib/elk-api'
 import { labelSize, NODE_HEIGHT, NODE_WIDTH } from './geometry'
 import { routeGraph, routingProblems, type Positions, type RoutingResult } from './routing'
+import { planGrouped, usesStageLayout } from './group-layout'
 
 export { NODE_WIDTH, NODE_HEIGHT } from './geometry'
 export type LayoutPlan = { positions: Positions; routing: RoutingResult }
@@ -101,6 +102,7 @@ export async function planLayout(
   graph: ModelGraph,
   direction = graph.layout.direction,
 ): Promise<LayoutPlan> {
+  if (usesStageLayout(graph)) return planGrouped(A, graph, direction)
   const automatic: ModelGraph = {
     ...graph,
     edges: graph.edges.map((edge) => ({ ...edge, sourceSide: undefined, targetSide: undefined })),

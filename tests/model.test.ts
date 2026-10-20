@@ -9,8 +9,8 @@ describe('portable model contract', () => {
   it('loads and round-trips the complete authored document', () => {
     const doc = parseDocument(starter)
     expect(parseDocument(JSON.parse(JSON.stringify(doc)))).toEqual(doc)
-    expect(doc.graphs).toHaveLength(9)
-    expect(doc.graphs.reduce((sum, g) => sum + g.nodes.length, 0)).toBe(60)
+    expect(doc.graphs).toHaveLength(11)
+    expect(doc.graphs.reduce((sum, g) => sum + g.nodes.length, 0)).toBe(77)
     expect(doc.config.vocabSize).toBe(demoTokenizer.vocabularySize)
   })
   it('preserves nested extension metadata', () => {

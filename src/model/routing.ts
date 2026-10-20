@@ -213,9 +213,15 @@ function placeLabels(
   graph: ModelGraph,
   positions: Positions,
   paths: Record<string, Point[]>,
+  obstacles: Rect[] = [],
+  reservedPaths: Point[][] = [],
 ): Record<string, LabelPlacement> {
-  const nodes = Object.values(positions).map(nodeRect)
-  const allSegments = Object.fromEntries(Object.entries(paths).map(([id, p]) => [id, segments(p)]))
+  const nodes = [...Object.values(positions).map(nodeRect), ...obstacles]
+  const reservedSegments = reservedPaths.flatMap(segments)
+  const allSegments = Object.fromEntries([
+    ...Object.entries(paths).map(([id, p]) => [id, segments(p)]),
+    ['@reserved', reservedSegments],
+  ]) as Record<string, ReturnType<typeof segments>>
   const labels: Record<string, LabelPlacement> = {}
   const candidates = graph.edges
     .map((edge) => {
@@ -245,7 +251,11 @@ function placeLabels(
               ? { x: coordinate, y: segment.a.y }
               : { x: segment.a.x, y: coordinate }
             const rect = { x: center.x - size.width / 2, y: center.y - size.height / 2, ...size }
-            if (nodes.some((n) => rectanglesOverlap(rect, n, NODE_CLEARANCE))) continue
+            if (
+              nodes.some((n) => rectanglesOverlap(rect, n, NODE_CLEARANCE)) ||
+              reservedSegments.some((s) => segmentHitsRect(s, rect, LABEL_CLEARANCE))
+            )
+              continue
             // A label must sit on a straight run, never over its own bend/other leg.
             if (
               pathSegments.some((s) => s !== segment && segmentHitsRect(s, rect, LABEL_CLEARANCE))
@@ -377,9 +387,10 @@ export function routeGraph(
   graph: ModelGraph,
   positions: Positions,
   direction = graph.layout.direction,
+  fixed: { ports?: Record<string, Port[]>; obstacles?: Rect[]; paths?: Point[][] } = {},
 ): RoutingResult {
   const router = new A.Router(A.RouterFlag.OrthogonalRouting.value)
-  const portMap = allocatePorts(graph, positions, direction)
+  const portMap = fixed.ports ?? allocatePorts(graph, positions, direction)
   const portList = Object.values(portMap).flat()
   const shapes: Record<string, NativeShape> = {}
   const connections: Record<string, NativeConnector> = {}
@@ -398,6 +409,7 @@ export function routeGraph(
     router.setRoutingOption(A.RoutingOption.nudgeOrthogonalSegmentsConnectedToShapes, false)
     router.setRoutingOption(A.RoutingOption.nudgeOrthogonalTouchingColinearSegments, true)
     router.setRoutingOption(A.RoutingOption.nudgeSharedPathsWithCommonEndPoint, false)
+    for (const obstacle of fixed.obstacles ?? []) makeShape(A, router, obstacle)
     for (const node of graph.nodes) {
       const rect = nodeRect(positions[node.id])
       const shape = (shapes[node.id] = makeShape(A, router, rect))
@@ -425,6 +437,8 @@ export function routeGraph(
       { ...graph, layout: { ...graph.layout, direction } },
       positions,
       initial,
+      fixed.obstacles,
+      fixed.paths,
     )
     // Labels become actual routing obstacles with an entrance and exit on
     // opposite faces. Thus a label cannot obscure any unrelated connection,
@@ -514,6 +528,8 @@ export function routeGraph(
           .filter((points) => {
             const line = { a: points[0], b: points[1] }
             return (
+              !(fixed.obstacles ?? []).some((rect) => segmentHitsRect(line, rect, 2)) &&
+              !(fixed.paths ?? []).flatMap(segments).some((s) => crossing(s, line)) &&
               !Object.values(positions).some((p) => segmentHitsRect(line, nodeRect(p), 2)) &&
               !routes.some(
                 (other) =>

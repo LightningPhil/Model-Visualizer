@@ -419,7 +419,7 @@
                   },
                   "zoom": {
                     "type": "number",
-                    "minimum": 0.05,
+                    "minimum": 0.001,
                     "maximum": 4
                   }
                 },

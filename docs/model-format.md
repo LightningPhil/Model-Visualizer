@@ -83,6 +83,14 @@ Routes, annotation bounds and per-connection ports are derived from the graph an
 
 Model imports are limited to 3 MiB, 30 graphs, 250 nodes per graph and 800 connections per graph. The format is for architecture and documentation. Large activation tensors belong in a separate trace artifact.
 
+### Whole-model expansion recipe
+
+The authored `whole-model` graph contains one `model-expansion` component with the reserved `model-visualizer.expansion` extension (recipe version 1). The recipe references input, block, attention, feed-forward, output, optional memory and generation study graphs and their entry/exit IDs. `src/model/whole-model.ts` instantiates those source components with stable prefixes (`tokens.`, `layer-0.attn.`, `layer-0.swiglu.`, `output.`, `generation.`), expands all main decoder layers, and adds explicit query-head results and KV-head views. The current recipe is a composition of the foundations profile; the role IDs such as `attn`, `weighted`, `concat`, `cachek`, `cachev`, `ids`, `context`, `hidden` and `sample` have defined meanings in that profile. A different architecture needs an explicit recipe/compiler extension.
+
+This graph's saved `layout.positions` refer to its **expanded instance IDs**, which semantic validation checks against the compiler output. The source document retains only templates, the recipe, and saved positions; it never stores a second copy of the generated graph. Expanded views have separate limits of 4,096 components and 12,000 connections. The ordinary authored-graph limits remain unchanged. Unknown kinds continue to render generically unless they explicitly opt into the reserved expansion extension.
+
+Very large maps can save viewport zooms down to `0.001`. This widens the accepted v1 viewport range without changing the meaning of existing files. Existing compatible workspaces gain the new authored generation graph and recipe while preserving their IDs, notes, metadata and saved study positions. Changes to layer/head counts keep surviving instance positions and remove obsolete IDs; an incomplete map is then laid out as a whole.
+
 Unknown standard fields are rejected rather than silently dropped. Put additional metadata in `extensions`. This protects agent-authored content from disappearing during a round-trip.
 
 ## Agent authoring checklist

@@ -101,7 +101,7 @@ test('exports notes, theme, model content and saved layouts as valid JSON', asyn
   expect(exported.ui.notes).toBe('Inspect GQA sharing next.\nUse source equations.')
   expect(exported.ui.theme).toBe('light')
   expect(exported.graphs[0].layout.positions.decoder).toEqual({ x: 365, y: 205 })
-  expect(exported.graphs).toHaveLength(9)
+  expect(exported.graphs).toHaveLength(11)
   await page.getByLabel('Open model JSON').setInputFiles((await download.path()) as string)
   await expect(page.getByLabel('Workspace notes')).toHaveValue(exported.ui.notes)
 })
@@ -136,7 +136,7 @@ test('works with Unicode and an empty prompt, and exposes real BPE merge steps',
 test('searches across graphs and switches attention heads', async ({ page }) => {
   await page.getByRole('button', { name: 'Search components', exact: true }).click()
   await page.getByRole('textbox', { name: 'Search model components' }).fill('Q · Kᵀ')
-  await page.locator('.search-results > button').click()
+  await page.locator('.search-results > button').filter({ hasText: 'Attention & heads' }).click()
   await expect(page.getByRole('heading', { name: 'Q · Kᵀ', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Q7', exact: true }).click()
   await expect(page.locator('.head-mapping')).toContainText('K1 · V1')
@@ -177,6 +177,7 @@ test('renders every graph in both themes without runtime errors', async ({ page 
     'Output & decoding',
     'N-gram memory',
     'Multi-token prediction',
+    'Generation & verification',
   ]
   for (const [index, name] of names.entries()) {
     await page.locator('.nav-item').filter({ hasText: name }).click()

@@ -14,6 +14,7 @@ import {
 import type { AvoidEngine } from '../src/model/avoid'
 import type { ModelGraph } from '../src/model/schema'
 import { clearDrop } from '../src/components/useDiagram'
+import { isWholeModel } from '../src/model/whole-model'
 
 let engine: AvoidEngine
 const document = parseDocument(starter)
@@ -23,7 +24,7 @@ beforeAll(async () => {
 })
 
 describe('complete diagram layout', () => {
-  for (const graph of document.graphs)
+  for (const graph of document.graphs.filter((g) => !isWholeModel(g)))
     for (const direction of ['RIGHT', 'DOWN'] as const) {
       it(`${graph.id} ${direction}: nodes, labels and all connections remain clear`, async () => {
         const plan = await planLayout(engine, graph, direction)

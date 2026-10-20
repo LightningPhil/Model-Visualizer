@@ -17,6 +17,7 @@ const names = [
   'Output & decoding',
   'N-gram memory',
   'Multi-token prediction',
+  'Generation & verification',
 ]
 
 async function connectionsReady(page: Page, count: number) {

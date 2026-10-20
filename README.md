@@ -26,8 +26,10 @@ The browser tests launch their own Vite server on port 5200. Set `PLAYWRIGHT_PRE
 
 ## Explore
 
-- **Nine graph views:** architecture overview, tokenizer, transformer block, attention, KV cache, feed-forward, output, n-gram memory and MTP.
-- **60 components:** click to inspect tensor dimensions, rendered LaTeX, explanations and primary sources. Click an edge label to inspect its operation.
+- **Whole model:** one expanded canvas with 252 components and 346 connections in the default teaching configuration. Every main decoder layer, query-head result and KV-head slice appears explicitly, alongside tokenization, feed-forward paths, output and the generation loop. Jump between stages, zoom, drag, auto-layout and save the complete map.
+- **Graphical simulation:** abstract packets flow through the model with play/pause, reversible steps, a timeline and camera follow. Switch ordinary decoding or two MTP depths; see proposals, causal verification, accepted prefixes, rejected suffixes, KV rollback and committed output. Text input is not required.
+- **Ten study views:** the original architecture, tokenizer, transformer block, attention, KV cache, feed-forward, output, n-gram memory and MTP views, plus generation and verification.
+- **77 authored components:** graph templates and an expansion recipe supply explanations, tensor dimensions, LaTeX and primary sources. Click an edge label to inspect its operation.
 - **Real teaching BPE:** edit the prompt; see UTF-8 bytes, token IDs and every ranked merge. Unicode round-trips losslessly.
 - **Attention:** switch MHA/GQA/MQA; inspect query-to-KV-head sharing and a causal heatmap. Prefill and decode use different query and key lengths.
 - **KV cache:** select a layer, head, K/V plane and sequence length. A dimensioned tensor-slice visualization shows the logical axes. Byte counts follow the selected sharing and storage width.
@@ -41,7 +43,7 @@ Use `/` to search components. Open the **field guide** for explanations, the res
 
 The bundled **Transformer foundations** document is a teaching architecture: six distinct pre-norm decoder layers, RoPE, configurable dense MHA/GQA/MQA and SwiGLU. It is **not a named checkpoint**.
 
-The tokenizer executes an explicit, small byte-BPE vocabulary. Tensor dimensions and logical KV bytes are calculated. Attention heatmaps are deterministic synthetic examples. There are **no trained weights or measured activations**, and the app does not generate language. The n-gram path is an illustrative conditional-memory extension; the MTP path illustrates sequential auxiliary training. These branches are labelled optional.
+The tokenizer executes an explicit, small byte-BPE vocabulary. Tensor dimensions and logical KV bytes are calculated. Attention heatmaps are deterministic synthetic examples. The graphical simulator uses abstract packets and scripted reference choices; it does **not** compute logits, execute trained weights or generate language. Its renderer-neutral execution trace keeps numerical/local-model adapters possible without coupling them to the canvas. The n-gram path is an illustrative, inactive extension in the simulator. The MTP study view explains auxiliary training; generation and verification are shown separately.
 
 MLA, MoE, sparse/windowed attention, arbitrary tokenizer plugins and real activation traces are researched extension points, not completed inference features. The [research map](docs/research.md) distinguishes their semantics and the work needed to add them.
 
@@ -52,6 +54,7 @@ The authored source of truth is [`examples/transformer-foundations.model.json`](
 - [Model format and agent authoring instructions](docs/model-format.md)
 - [Research map, component taxonomy and primary references](docs/research.md)
 - [Software architecture and extension boundaries](docs/architecture.md)
+- [Graphical execution and future numerical adapters](docs/simulation.md)
 - [Machine-readable JSON Schema](examples/model.schema.json)
 - [Repository instructions for future agents](AGENTS.md)
 

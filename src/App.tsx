@@ -24,6 +24,8 @@ import {
   Search,
   SlidersHorizontal,
   Sun,
+  Network,
+  Play,
   X,
 } from 'lucide-react'
 import starter from '../examples/transformer-foundations.model.json'
@@ -43,6 +45,12 @@ import { Inspector } from './components/Inspector'
 import { Logo, graphIcons } from './components/Icons'
 import { AttentionLab, CacheLab, MemoryLab, MtpLab, TokenizerLab } from './components/Labs'
 import { Dialog } from './components/Dialog'
+import { addWholeModelView, expandWholeModel, instanceOf, isWholeModel } from './model/whole-model'
+import { useSimulation } from './components/useSimulation'
+import { SimulationPanel, SimulationStrip } from './components/SimulationPanel'
+
+const referenceDocument = parseDocument(starter)
+const upgrade = (doc: ModelDocument) => addWholeModelView(doc, referenceDocument)
 
 const labels: Record<string, string> = {
   overview: 'Architecture overview',
@@ -54,11 +62,16 @@ const labels: Record<string, string> = {
   output: 'Output & decoding',
   memory: 'N-gram memory',
   mtp: 'Multi-token prediction',
+  generation: 'Generation & verification',
+  'whole-model': 'Whole model',
 }
 const labGraphs = new Set(['tokenization', 'attention', 'cache', 'memory', 'mtp'])
 
 export default function App() {
-  const [doc, setDoc] = useState<ModelDocument>(() => loadWorkspace() ?? parseDocument(starter))
+  const [doc, setDoc] = useState<ModelDocument>(() => upgrade(loadWorkspace() ?? referenceDocument))
+  const [simulating, setSimulating] = useState(false)
+  const [diagramReady, setDiagramReady] = useState(false)
+  const [focus, setFocus] = useState<{ id: string; revision: number } | undefined>()
   const [selection, setSelection] = useState<Selection>({ type: 'node', id: 'decoder' })
   const [showShapes, setShowShapes] = useState(true)
   const [symbolic, setSymbolic] = useState(false)
@@ -77,15 +90,30 @@ export default function App() {
   const fileInput = useRef<HTMLInputElement>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
-  const graph = doc.graphs.find((g) => g.id === doc.ui.activeGraph)!
+  const authoredGraph = doc.graphs.find((g) => g.id === doc.ui.activeGraph)!
+  const graph = useMemo(
+    () => expandWholeModel(doc, authoredGraph),
+    [doc.graphs, doc.config, authoredGraph],
+  )
+  const wholeModel = doc.graphs.find(isWholeModel)
+  const whole = Boolean(wholeModel?.id === graph.id)
+  const sim = useSimulation(doc.config, simulating && whole)
+  const simulationFrame = sim.frame
   const encoded = useMemo(() => demoTokenizer.encode(doc.ui.prompt), [doc.ui.prompt])
   const tokenizerSupported =
     doc.tokenizer.adapter === demoTokenizer.id &&
     doc.config.vocabSize >= demoTokenizer.vocabularySize
   const tokenCount = tokenizerSupported ? Math.max(1, encoded.tokens.length) : 12
   const symbols = useMemo(
-    () => dimensions(doc.config, tokenCount, decode),
-    [doc.config, tokenCount, decode],
+    () =>
+      simulationFrame
+        ? {
+            ...dimensions(doc.config),
+            T: simulationFrame.queryLength,
+            S: Math.max(simulationFrame.contextLength, ...simulationFrame.cacheLengths),
+          }
+        : dimensions(doc.config, tokenCount, decode),
+    [doc.config, tokenCount, decode, simulationFrame],
   )
   const currentToken = Math.min(selectedToken, Math.max(0, encoded.tokens.length - 1))
   const hasLab = labGraphs.has(graph.id)
@@ -131,6 +159,9 @@ export default function App() {
     setSelection(null)
     setMobileNav(false)
     setLabOpen(true)
+    setSimulating(false)
+    setDiagramReady(false)
+    setFocus(undefined)
   }, [])
 
   function updateGraph(id: string, change: (graph: ModelGraph) => ModelGraph) {
@@ -143,11 +174,12 @@ export default function App() {
   async function loadFile(file: File | undefined) {
     if (!file) return
     try {
-      const imported = await importDocument(file)
+      const imported = upgrade(await importDocument(file))
       setDoc(imported)
       setDocumentRevision((value) => value + 1)
       setSelection(null)
       setDecode(false)
+      setSimulating(false)
       notify(`Opened ${imported.name}. Layouts and notes restored.`)
     } catch (error) {
       notify(
@@ -159,7 +191,23 @@ export default function App() {
 
   function setConfig(changes: Partial<ModelConfig>) {
     try {
-      const next = parseDocument({ ...doc, config: { ...doc.config, ...changes } })
+      const candidate = { ...doc, config: { ...doc.config, ...changes } }
+      // Prune obsolete derived IDs after a head/layer-count edit, retaining
+      // positions for every instance that still exists.
+      candidate.graphs = candidate.graphs.map((g) => {
+        if (!isWholeModel(g)) return g
+        const ids = new Set(expandWholeModel(candidate, g).nodes.map((n) => n.id))
+        return {
+          ...g,
+          layout: {
+            ...g.layout,
+            positions: Object.fromEntries(
+              Object.entries(g.layout.positions).filter(([id]) => ids.has(id)),
+            ),
+          },
+        }
+      })
+      const next = parseDocument(candidate)
       setDoc(next)
     } catch (error) {
       notify(error instanceof Error ? error.message : 'Invalid configuration.')
@@ -181,14 +229,14 @@ export default function App() {
   const searchResults = useMemo(
     () =>
       doc.graphs
-        .flatMap((g) => g.nodes.map((n) => ({ graph: g, node: n })))
+        .flatMap((g) => expandWholeModel(doc, g).nodes.map((n) => ({ graph: g, node: n })))
         .filter(({ node }) =>
           `${node.title} ${node.subtitle} ${node.description}`
             .toLowerCase()
             .includes(query.toLowerCase()),
         )
         .slice(0, 40),
-    [doc.graphs, query],
+    [doc.graphs, doc.config, query],
   )
   const layer = Math.min(selectedLayer, doc.config.nLayers - 1)
   const labProps = {
@@ -202,7 +250,9 @@ export default function App() {
   }
 
   return (
-    <div className={`app ${inspectorOpen ? 'with-inspector' : ''}`}>
+    <div
+      className={`app ${inspectorOpen ? 'with-inspector' : ''} ${simulating ? 'with-simulator' : ''}`}
+    >
       <header className="topbar">
         <div className="brand">
           <button
@@ -293,26 +343,56 @@ export default function App() {
             </span>
             <ChevronDown size={13} />
           </button>
+          {wholeModel && (
+            <div className="journey-navigation">
+              <button
+                className={`journey-button ${whole && !simulating ? 'active' : ''}`}
+                onClick={() => openGraph(wholeModel.id)}
+              >
+                <Network size={17} />
+                <span>
+                  Whole model<small>Every layer on one canvas</small>
+                </span>
+              </button>
+              <button
+                className={`journey-button ${simulating ? 'active' : ''}`}
+                onClick={() => {
+                  openGraph(wholeModel.id)
+                  setSimulating(true)
+                  setInspectorOpen(true)
+                }}
+              >
+                <Play size={16} />
+                <span>
+                  Run simulation<small>Follow the execution</small>
+                </span>
+              </button>
+            </div>
+          )}
           <div className="nav-section-title">
             <span className="eyebrow">EXPLORE THE MODEL</span>
-            <small>{String(doc.graphs.length).padStart(2, '0')}</small>
+            <small>
+              {String(doc.graphs.filter((g) => !isWholeModel(g)).length).padStart(2, '0')}
+            </small>
           </div>
           <nav>
-            {doc.graphs.map((g, i) => {
-              const Icon = graphIcons[g.id] ?? Layers3
-              return (
-                <button
-                  className={`nav-item ${graph.id === g.id ? 'active' : ''}`}
-                  key={g.id}
-                  aria-current={graph.id === g.id ? 'page' : undefined}
-                  onClick={() => openGraph(g.id)}
-                >
-                  <Icon size={16} />
-                  <span>{labels[g.id] ?? g.title}</span>
-                  <small>{String(i + 1).padStart(2, '0')}</small>
-                </button>
-              )
-            })}
+            {doc.graphs
+              .filter((g) => !isWholeModel(g))
+              .map((g, i) => {
+                const Icon = graphIcons[g.id] ?? Layers3
+                return (
+                  <button
+                    className={`nav-item ${graph.id === g.id ? 'active' : ''}`}
+                    key={g.id}
+                    aria-current={graph.id === g.id ? 'page' : undefined}
+                    onClick={() => openGraph(g.id)}
+                  >
+                    <Icon size={16} />
+                    <span>{labels[g.id] ?? g.title}</span>
+                    <small>{String(i + 1).padStart(2, '0')}</small>
+                  </button>
+                )
+              })}
           </nav>
           <div className="config-summary">
             <div className="section-heading">
@@ -409,96 +489,133 @@ export default function App() {
             </button>
           </div>
         </div>
-        <section className="prompt-panel" aria-label="Prompt and tokenization">
-          <div className="prompt-input-row">
-            <label htmlFor="prompt">
-              <Command size={13} />
-              PROMPT
-            </label>
-            <input
-              id="prompt"
-              value={doc.ui.prompt}
-              maxLength={240}
-              placeholder="Type a prompt to inspect its tokens…"
-              onChange={(event) =>
-                setDoc({ ...doc, ui: { ...doc.ui, prompt: event.target.value } })
-              }
-              spellCheck={false}
-            />
-            <span className="token-count">
-              {tokenizerSupported ? encoded.tokens.length : '—'}
-              <small>tokens</small>
-            </span>
-          </div>
-          {tokenizerSupported ? (
-            <div className="token-ribbon">
-              <span className="ribbon-caption">TOKEN IDS</span>
-              <div className="token-items">
-                {encoded.tokens.map((token, i) => (
-                  <button
-                    className={`token-chip token-color-${i % 3} ${currentToken === i ? 'selected-token' : ''}`}
-                    key={`${i}-${token.id}`}
-                    title={`Position ${i} · ID ${token.id} · bytes [${token.bytes.join(', ')}]`}
-                    aria-label={`Token ${i}: ${token.label}, ID ${token.id}`}
-                    onClick={() => setSelectedToken(i)}
-                  >
-                    <span>{token.label}</span>
-                    <small>{token.id}</small>
-                  </button>
-                ))}
-                {encoded.tokens.length === 0 && (
-                  <span className="muted">
-                    Enter text. Shapes currently use T = 1 as a reference.
-                  </span>
-                )}
+        {simulating ? (
+          <SimulationStrip sim={sim} />
+        ) : (
+          <section className="prompt-panel" aria-label="Prompt and tokenization">
+            <div className="prompt-input-row">
+              <label htmlFor="prompt">
+                <Command size={13} />
+                PROMPT
+              </label>
+              <input
+                id="prompt"
+                value={doc.ui.prompt}
+                maxLength={240}
+                placeholder="Type a prompt to inspect its tokens…"
+                onChange={(event) =>
+                  setDoc({ ...doc, ui: { ...doc.ui, prompt: event.target.value } })
+                }
+                spellCheck={false}
+              />
+              <span className="token-count">
+                {tokenizerSupported ? encoded.tokens.length : '—'}
+                <small>tokens</small>
+              </span>
+            </div>
+            {tokenizerSupported ? (
+              <div className="token-ribbon">
+                <span className="ribbon-caption">TOKEN IDS</span>
+                <div className="token-items">
+                  {encoded.tokens.map((token, i) => (
+                    <button
+                      className={`token-chip token-color-${i % 3} ${currentToken === i ? 'selected-token' : ''}`}
+                      key={`${i}-${token.id}`}
+                      title={`Position ${i} · ID ${token.id} · bytes [${token.bytes.join(', ')}]`}
+                      aria-label={`Token ${i}: ${token.label}, ID ${token.id}`}
+                      onClick={() => setSelectedToken(i)}
+                    >
+                      <span>{token.label}</span>
+                      <small>{token.id}</small>
+                    </button>
+                  ))}
+                  {encoded.tokens.length === 0 && (
+                    <span className="muted">
+                      Enter text. Shapes currently use T = 1 as a reference.
+                    </span>
+                  )}
+                </div>
+                <button
+                  className="tokenizer-open"
+                  title="Open tokenizer lab"
+                  aria-label="Open tokenizer lab"
+                  onClick={() => openGraph('tokenization')}
+                >
+                  <ArrowUpRight size={15} />
+                </button>
               </div>
-              <button
-                className="tokenizer-open"
-                title="Open tokenizer lab"
-                aria-label="Open tokenizer lab"
-                onClick={() => openGraph('tokenization')}
-              >
-                <ArrowUpRight size={15} />
-              </button>
-            </div>
-          ) : (
-            <div className="unsupported-tokenizer">
-              <HelpCircle size={13} />
-              Adapter “{doc.tokenizer.adapter}” is unavailable. Graph shapes use reference T = 12;
-              token labs are disabled.
-            </div>
-          )}
-        </section>
+            ) : (
+              <div className="unsupported-tokenizer">
+                <HelpCircle size={13} />
+                Adapter “{doc.tokenizer.adapter}” is unavailable. Graph shapes use reference T = 12;
+                token labs are disabled.
+              </div>
+            )}
+          </section>
+        )}
         <div className="graph-toolbar">
-          <div className="segmented inference-mode">
-            <button aria-pressed={!decode} onClick={() => setDecode(false)}>
-              Prefill
-            </button>
-            <button aria-pressed={decode} onClick={() => setDecode(true)}>
-              Decode step
-            </button>
-          </div>
-          {['block', 'attention', 'feedforward', 'cache'].includes(graph.id) && (
-            <label className="layer-selector">
-              ℓ
+          {whole && (
+            <label className="whole-model-jump">
+              Jump to
               <select
-                aria-label="Active decoder layer"
-                value={layer}
-                onChange={(event) => setSelectedLayer(Number(event.target.value))}
+                aria-label="Jump to model stage"
+                value=""
+                onChange={(event) => {
+                  const node = graph.nodes.find((n) => instanceOf(n)?.stage === event.target.value)
+                  if (node) {
+                    sim.setPlaying(false)
+                    setFocus({ id: node.id, revision: Date.now() })
+                  }
+                }}
               >
-                {Array.from({ length: doc.config.nLayers }, (_, i) => (
-                  <option key={i} value={i}>
-                    {i}
-                  </option>
-                ))}
+                <option value="">Choose a stage…</option>
+                {[...new Set(graph.nodes.map((n) => instanceOf(n)?.stage).filter(Boolean))].map(
+                  (stage) => (
+                    <option key={stage}>{stage}</option>
+                  ),
+                )}
               </select>
             </label>
           )}
-          <span className="inference-caption">
-            {decode
-              ? `T = 1 · S = ${symbols.S} · one new token`
-              : `T = S = ${symbols.T} · prompt in parallel`}
-          </span>
+          {!simulating && (
+            <>
+              <div className="segmented inference-mode">
+                <button aria-pressed={!decode} onClick={() => setDecode(false)}>
+                  Prefill
+                </button>
+                <button aria-pressed={decode} onClick={() => setDecode(true)}>
+                  Decode step
+                </button>
+              </div>
+              {['block', 'attention', 'feedforward', 'cache'].includes(graph.id) && (
+                <label className="layer-selector">
+                  ℓ
+                  <select
+                    aria-label="Active decoder layer"
+                    value={layer}
+                    onChange={(event) => setSelectedLayer(Number(event.target.value))}
+                  >
+                    {Array.from({ length: doc.config.nLayers }, (_, i) => (
+                      <option key={i} value={i}>
+                        {i}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <span className="inference-caption">
+                {decode
+                  ? `T = 1 · S = ${symbols.S} · one new token`
+                  : `T = S = ${symbols.T} · prompt in parallel`}
+              </span>
+            </>
+          )}
+          {simulating && (
+            <span className="inference-caption simulation-caption">
+              {simulationFrame?.phase.toUpperCase() ?? 'READY'} · {graph.nodes.length} components ·{' '}
+              {graph.edges.length} connections
+            </span>
+          )}
           <div className="shape-options">
             <label className="toggle-label">
               <input
@@ -532,6 +649,22 @@ export default function App() {
             onSelect={setSelection}
             onOpen={openGraph}
             notify={notify}
+            execution={
+              simulating
+                ? {
+                    active: simulationFrame?.nodeIds ?? [],
+                    completed: sim.completed,
+                    revision: sim.cursor,
+                    playing: sim.playing,
+                  }
+                : undefined
+            }
+            focus={
+              simulating && sim.follow && simulationFrame
+                ? { id: simulationFrame.nodeIds[0], revision: sim.cursor }
+                : focus
+            }
+            onReady={simulating ? setDiagramReady : undefined}
             onLayout={(positions, direction, resetViewport) =>
               updateGraph(graph.id, (g) => ({
                 ...g,
@@ -633,18 +766,30 @@ export default function App() {
           </span>
         </footer>
       </main>
-      {inspectorOpen && (
-        <Inspector
-          layer={layer}
-          doc={doc}
-          selection={selection}
-          symbols={symbols}
-          symbolic={symbolic}
-          onOpen={openGraph}
-          onNotes={(notes) => setDoc({ ...doc, ui: { ...doc.ui, notes } })}
-          notify={notify}
-        />
-      )}
+      {simulating
+        ? inspectorOpen && (
+            <SimulationPanel
+              sim={sim}
+              config={doc.config}
+              ready={diagramReady}
+              onClose={() => {
+                sim.setPlaying(false)
+                setInspectorOpen(false)
+              }}
+            />
+          )
+        : inspectorOpen && (
+            <Inspector
+              layer={layer}
+              doc={doc}
+              selection={selection}
+              symbols={symbols}
+              symbolic={symbolic}
+              onOpen={openGraph}
+              onNotes={(notes) => setDoc({ ...doc, ui: { ...doc.ui, notes } })}
+              notify={notify}
+            />
+          )}
       {toast && (
         <div className="toast" role="status">
           <Check size={16} />
@@ -817,6 +962,7 @@ export default function App() {
                 onClick={() => {
                   openGraph(g.id)
                   setSelection({ type: 'node', id: node.id })
+                  setFocus({ id: node.id, revision: Date.now() })
                   setInspectorOpen(true)
                   setModal(null)
                   setQuery('')

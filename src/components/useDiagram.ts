@@ -94,11 +94,26 @@ export function useDiagram(props: DiagramProps) {
         position: positions[component.id] ?? { x: i * 400, y: 100 },
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
+        measured: { width: NODE_WIDTH, height: NODE_HEIGHT },
         ariaLabel: `${component.title}. ${component.subtitle}.`,
-        data: { component, symbols, showShapes, symbolic, onOpen, ports: [] },
+        data: {
+          component,
+          symbols,
+          showShapes,
+          symbolic,
+          onOpen,
+          ports: [],
+          execution: props.execution
+            ? props.execution.active.includes(component.id)
+              ? 'active'
+              : props.execution.completed.has(component.id)
+                ? 'done'
+                : 'pending'
+            : undefined,
+        },
         selected: selection?.type === 'node' && selection.id === component.id,
       })),
-    [graph.nodes, symbols, showShapes, symbolic, onOpen, selection],
+    [graph.nodes, symbols, showShapes, symbolic, onOpen, selection, props.execution],
   )
   const [nodeState, setNodes] = useState<VisualNode[]>(() => buildNodes(graph.layout.positions))
   const positions = useMemo(
@@ -117,7 +132,7 @@ export function useDiagram(props: DiagramProps) {
       const width = canvasRef.current?.clientWidth ?? 0
       const height = canvasRef.current?.clientHeight ?? 0
       if (!rect || !width || !height) return
-      const viewport = getViewportForBounds(rect, width, height, 0.035, 1, {
+      const viewport = getViewportForBounds(rect, width, height, 0.001, 1, {
         top: '64px',
         bottom: '82px',
         left: '30px',
@@ -227,15 +242,17 @@ export function useDiagram(props: DiagramProps) {
         : graph.edges.map((connection) => {
             const route = result.edges[connection.id]
             const selected = selection?.type === 'edge' && selection.id === connection.id
-            const color = selected
-              ? 'var(--cyan)'
-              : connection.kind === 'state'
-                ? 'var(--violet)'
-                : connection.kind === 'auxiliary'
-                  ? 'var(--amber)'
-                  : connection.kind === 'residual'
-                    ? 'var(--cyan)'
-                    : 'var(--edge)'
+            const active = props.execution?.active.includes(connection.target)
+            const color =
+              selected || active
+                ? 'var(--cyan)'
+                : connection.kind === 'state'
+                  ? 'var(--violet)'
+                  : connection.kind === 'auxiliary'
+                    ? 'var(--amber)'
+                    : connection.kind === 'residual'
+                      ? 'var(--cyan)'
+                      : 'var(--edge)'
             return {
               id: connection.id,
               source: connection.source,
@@ -248,16 +265,18 @@ export function useDiagram(props: DiagramProps) {
               data: {
                 connection,
                 route,
+                active,
+                playing: props.execution?.playing,
                 onSelect: (id) => propsRef.current.onSelect({ type: 'edge', id }),
               },
               style: {
                 stroke: color,
-                strokeWidth: selected ? 2 : 1.4,
+                strokeWidth: selected || active ? 2.2 : 1.4,
                 strokeDasharray: connection.kind === 'flow' ? undefined : '5 5',
               },
             }
           }),
-    [result, portsReady, graph.edges, selection],
+    [result, portsReady, graph.edges, selection, props.execution],
   )
 
   async function arrange(direction = graph.layout.direction) {

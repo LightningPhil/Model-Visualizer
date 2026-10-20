@@ -25,7 +25,7 @@ jobs:
       - run: npm run test:e2e
         env:
           CI: true
-      - run: npm run test:e2e -- tests/e2e/routing.spec.ts
+      - run: npm run test:e2e -- tests/e2e/routing.spec.ts tests/e2e/simulation.spec.ts
         env:
           CI: true
           PLAYWRIGHT_PREVIEW: '1'

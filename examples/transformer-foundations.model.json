@@ -87,6 +87,12 @@
       "title": "Conditional Memory via Scalable Lookup",
       "url": "https://arxiv.org/html/2601.07372v1",
       "note": "Engram conditional memory, hashed n-gram retrieval and context-aware fusion."
+    },
+    {
+      "id": "speculative",
+      "title": "Fast Inference from Transformers via Speculative Decoding",
+      "url": "https://proceedings.mlr.press/v202/leviathan23a.html",
+      "note": "Draft / verify / accept-prefix inference. The simulator implements greedy verification, not the paper’s stochastic probability-ratio rule; it makes no speedup claim."
     }
   ],
   "graphs": [
@@ -2072,6 +2078,628 @@
           "kind": "flow"
         }
       ],
+      "layout": {
+        "direction": "RIGHT",
+        "positions": {}
+      }
+    },
+    {
+      "id": "generation",
+      "title": "Draft. Verify. Commit. Repeat.",
+      "subtitle": "Ordinary decoding and two sequential MTP depths.",
+      "description": "The complete inference loop, with tentative proposals, causal main-model verification, KV rollback and confirmed output. Two MTP modules are an illustrative teaching configuration.",
+      "nodes": [
+        {
+          "id": "next",
+          "kind": "next",
+          "title": "Base next token",
+          "subtitle": "Greedy choice · token t+1",
+          "category": "output",
+          "description": "The main model predicts the first token from the last position. This token is the starting point for ordinary decoding or sequential MTP drafting.",
+          "equation": "x_{t+1}=\\arg\\max_v z_{t,v}",
+          "tensors": [
+            {
+              "name": "Next ID",
+              "shape": ["B", "1"],
+              "role": "output"
+            }
+          ],
+          "notes": [
+            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+          ],
+          "sourceIds": ["deepseek", "speculative"]
+        },
+        {
+          "id": "hidden",
+          "kind": "hidden",
+          "title": "Main hidden state",
+          "subtitle": "Last position of the main decoder",
+          "category": "compute",
+          "description": "The last hidden representation conditions the first MTP module. MTP heads share the token embedding and vocabulary projection in this teaching design.",
+          "equation": "h_t\\in\\mathbb{R}^{D}",
+          "tensors": [
+            {
+              "name": "Main hidden state",
+              "role": "output",
+              "shape": ["B", "D"]
+            }
+          ],
+          "notes": [
+            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+          ],
+          "sourceIds": ["deepseek", "speculative"]
+        },
+        {
+          "id": "embed1",
+          "kind": "embed1",
+          "title": "Draft embedding · depth 1",
+          "subtitle": "Embed proposed token t+1",
+          "category": "data",
+          "description": "Look up the embedding of the base next-token prediction. During inference this is a proposed token, not a teacher-forced future target.",
+          "equation": "e_{t+1}=E[x_{t+1}]",
+          "tensors": [
+            {
+              "name": "Draft embedding · depth 1",
+              "role": "output",
+              "shape": ["B", "D"]
+            }
+          ],
+          "notes": [
+            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+          ],
+          "sourceIds": ["deepseek", "speculative"]
+        },
+        {
+          "id": "combine1",
+          "kind": "combine1",
+          "title": "MTP combine · depth 1",
+          "subtitle": "Normalize · concatenate · 2D → D",
+          "category": "compute",
+          "description": "Normalize the previous hidden representation and the shifted token embedding separately, concatenate them, and project back to hidden width.",
+          "equation": "u_t^{(1)}=[\\operatorname{RMSNorm}(h_t);\\operatorname{RMSNorm}(e_{t+1})]M_1",
+          "tensors": [
+            {
+              "name": "MTP combine · depth 1",
+              "role": "output",
+              "shape": ["B", "1", "D"]
+            }
+          ],
+          "notes": [
+            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+          ],
+          "sourceIds": ["deepseek", "speculative"]
+        },
+        {
+          "id": "mtp1",
+          "kind": "mtp1",
+          "title": "MTP decoder · depth 1",
+          "subtitle": "Causal attention + SwiGLU",
+          "category": "compute",
+          "description": "An additional decoder block transforms the combined representation. Its parameters and attention state are separate from the main decoder.",
+          "equation": "h_t^{(1)}=\\operatorname{Decoder}_1(u_t^{(1)})",
+          "tensors": [
+            {
+              "name": "MTP decoder · depth 1",
+              "role": "output",
+              "shape": ["B", "1", "D"]
+            }
+          ],
+          "notes": [
+            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+          ],
+          "sourceIds": ["deepseek", "speculative"]
+        },
+        {
+          "id": "head1",
+          "kind": "head1",
+          "title": "MTP prediction · t+2",
+          "subtitle": "Shared vocabulary projection",
+          "category": "output",
+          "description": "The first MTP module proposes the second token. It is a draft and has not yet been accepted by the main model.",
+          "equation": "\\hat x_{t+2}=\\arg\\max_v[\\operatorname{RMSNorm}(h_t^{(1)})W_U]_v",
+          "tensors": [
+            {
+              "name": "Draft token ID",
+              "role": "output",
+              "shape": ["B", "1"]
+            },
+            {
+              "name": "Draft logits",
+              "shape": ["B", "V"],
+              "role": "output"
+            }
+          ],
+          "notes": [
+            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+          ],
+          "sourceIds": ["deepseek", "speculative"]
+        },
+        {
+          "id": "embed2",
+          "kind": "embed2",
+          "title": "Draft embedding · depth 2",
+          "subtitle": "Embed proposed token t+2",
+          "category": "data",
+          "description": "Embed the first MTP prediction to condition the next MTP depth. The proposal chain is sequential, so proposals are not independent.",
+          "equation": "e_{t+2}=E[\\hat x_{t+2}]",
+          "tensors": [
+            {
+              "name": "Draft embedding · depth 2",
+              "role": "output",
+              "shape": ["B", "D"]
+            }
+          ],
+          "notes": [
+            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+          ],
+          "sourceIds": ["deepseek", "speculative"]
+        },
+        {
+          "id": "combine2",
+          "kind": "combine2",
+          "title": "MTP combine · depth 2",
+          "subtitle": "Previous depth + next embedding",
+          "category": "compute",
+          "description": "The second depth combines the previous MTP hidden state with the next shifted token embedding.",
+          "equation": "u_t^{(2)}=[\\operatorname{RMSNorm}(h_t^{(1)});\\operatorname{RMSNorm}(e_{t+2})]M_2",
+          "tensors": [
+            {
+              "name": "MTP combine · depth 2",
+              "role": "output",
+              "shape": ["B", "1", "D"]
+            }
+          ],
+          "notes": [
+            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+          ],
+          "sourceIds": ["deepseek", "speculative"]
+        },
+        {
+          "id": "mtp2",
+          "kind": "mtp2",
+          "title": "MTP decoder · depth 2",
+          "subtitle": "Separate causal decoder block",
+          "category": "compute",
+          "description": "The second additional decoder block uses its own parameters and state. Two depths are an illustrative configuration, not a claim about every MTP architecture.",
+          "equation": "h_t^{(2)}=\\operatorname{Decoder}_2(u_t^{(2)})",
+          "tensors": [
+            {
+              "name": "MTP decoder · depth 2",
+              "role": "output",
+              "shape": ["B", "1", "D"]
+            }
+          ],
+          "notes": [
+            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+          ],
+          "sourceIds": ["deepseek", "speculative"]
+        },
+        {
+          "id": "head2",
+          "kind": "head2",
+          "title": "MTP prediction · t+3",
+          "subtitle": "Third proposed token",
+          "category": "output",
+          "description": "The second MTP module proposes the third token using the shared vocabulary projection. All proposals still require main-model verification.",
+          "equation": "\\hat x_{t+3}=\\arg\\max_v[\\operatorname{RMSNorm}(h_t^{(2)})W_U]_v",
+          "tensors": [
+            {
+              "name": "Draft token ID",
+              "role": "output",
+              "shape": ["B", "1"]
+            },
+            {
+              "name": "Draft logits",
+              "shape": ["B", "V"],
+              "role": "output"
+            }
+          ],
+          "notes": [
+            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+          ],
+          "sourceIds": ["deepseek", "speculative"]
+        },
+        {
+          "id": "verify",
+          "kind": "verify",
+          "title": "Verify with the main decoder",
+          "subtitle": "One causal batch · shifted logits",
+          "category": "compute",
+          "description": "Run the proposed tokens through the full main decoder using a tentative copy of its KV state. Existing prefix logits verify the first proposal; each batch output verifies the following proposal. The same causal mask and greedy selection rule are used.",
+          "equation": "v_j=\\arg\\max_v p(v\\mid x_{\\le t},d_{<j})",
+          "tensors": [
+            {
+              "name": "Verified next-token IDs",
+              "role": "output",
+              "shape": ["B", "T"]
+            },
+            {
+              "name": "Tentative K/V per layer",
+              "role": "state",
+              "shape": ["B", "Hkv", "S", "Dh"]
+            }
+          ],
+          "notes": [
+            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+          ],
+          "sourceIds": ["deepseek", "speculative"]
+        },
+        {
+          "id": "compare",
+          "kind": "compare",
+          "title": "Accept the matching prefix",
+          "subtitle": "Stop at the first mismatch",
+          "category": "compute",
+          "description": "In greedy verification, accept proposals only until the first mismatch with the main model. Later proposals cannot be accepted after an earlier mismatch. This is not the probability-ratio acceptance rule used for stochastic speculative sampling.",
+          "equation": "k=\\max\\{m:\\forall j\\le m,\\ d_j=v_j\\}",
+          "tensors": [
+            {
+              "name": "Accepted prefix length",
+              "role": "output",
+              "shape": ["B", "1"]
+            }
+          ],
+          "notes": [
+            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+          ],
+          "sourceIds": ["deepseek", "speculative"]
+        },
+        {
+          "id": "reject",
+          "kind": "reject",
+          "title": "Discard rejected suffix",
+          "subtitle": "Rollback tentative KV positions",
+          "category": "memory",
+          "description": "Discard the first mismatching proposal and every later proposal. Trim tentative main-model K/V positions to the accepted prefix. The correction is the main model token at the first mismatch.",
+          "equation": "C\\leftarrow C[0:S+k]",
+          "tensors": [
+            {
+              "name": "Correction token ID",
+              "role": "output",
+              "shape": ["B", "1"]
+            },
+            {
+              "name": "Committed cache per layer",
+              "shape": ["B", "Hkv", "S", "Dh"],
+              "role": "state"
+            }
+          ],
+          "notes": [
+            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+          ],
+          "sourceIds": ["deepseek", "speculative"]
+        },
+        {
+          "id": "commit",
+          "kind": "commit",
+          "title": "Commit verified tokens",
+          "subtitle": "Accepted prefix + correction / bonus",
+          "category": "output",
+          "description": "Commit the accepted prefix and, when there is room in the token budget, a main-model correction at a mismatch or a bonus token if every proposal matched. No rejected proposal is appended to the confirmed sequence.",
+          "equation": "X\\leftarrow X\\Vert d_{1:k}\\Vert v_{k+1}",
+          "tensors": [
+            {
+              "name": "Confirmed IDs",
+              "shape": ["B", "S"],
+              "role": "output"
+            }
+          ],
+          "notes": [
+            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+          ],
+          "sourceIds": ["deepseek", "speculative"]
+        },
+        {
+          "id": "decode",
+          "kind": "decode",
+          "title": "Decode confirmed text",
+          "subtitle": "Token IDs → UTF-8 bytes → text",
+          "category": "output",
+          "description": "Decode confirmed IDs through the same tokenizer vocabulary. Token IDs are appended as IDs for subsequent computation; generated text is not re-tokenized.",
+          "equation": "\\text{text}=\\operatorname{decode}(X)",
+          "tensors": [
+            {
+              "name": "Confirmed IDs",
+              "shape": ["B", "S"],
+              "role": "output"
+            }
+          ],
+          "notes": [
+            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+          ],
+          "sourceIds": ["deepseek", "speculative"]
+        },
+        {
+          "id": "feedback",
+          "kind": "feedback",
+          "title": "Feed the next iteration",
+          "subtitle": "Reuse committed KV state",
+          "category": "data",
+          "description": "Continue from the confirmed token sequence and main-model state. Stop at the requested output-token budget or the teaching context limit.",
+          "equation": "p(x_{t+1}\\mid x_{\\le t})",
+          "tensors": [
+            {
+              "name": "Sequence IDs",
+              "shape": ["B", "S"],
+              "role": "output"
+            }
+          ],
+          "notes": [
+            "Inference teaching path. The runnable simulator uses explicitly disclosed tiny, untrained weights."
+          ],
+          "sourceIds": ["deepseek", "speculative"]
+        }
+      ],
+      "edges": [
+        {
+          "id": "next--embed1",
+          "source": "next",
+          "target": "embed1",
+          "label": "proposed t+1",
+          "operation": "proposed t+1",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "1"],
+          "kind": "flow"
+        },
+        {
+          "id": "hidden--combine1",
+          "source": "hidden",
+          "target": "combine1",
+          "label": "last hidden",
+          "operation": "last hidden",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "D"],
+          "kind": "flow"
+        },
+        {
+          "id": "embed1--combine1",
+          "source": "embed1",
+          "target": "combine1",
+          "label": "shifted embedding",
+          "operation": "shifted embedding",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "D"],
+          "kind": "flow"
+        },
+        {
+          "id": "combine1--mtp1",
+          "source": "combine1",
+          "target": "mtp1",
+          "label": "project 2D → D",
+          "operation": "project 2D → D",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "1", "D"],
+          "kind": "flow"
+        },
+        {
+          "id": "mtp1--head1",
+          "source": "mtp1",
+          "target": "head1",
+          "label": "shared output head",
+          "operation": "shared output head",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "1", "D"],
+          "kind": "flow"
+        },
+        {
+          "id": "head1--embed2",
+          "source": "head1",
+          "target": "embed2",
+          "label": "proposed t+2",
+          "operation": "proposed t+2",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "1"],
+          "kind": "flow"
+        },
+        {
+          "id": "mtp1--combine2",
+          "source": "mtp1",
+          "target": "combine2",
+          "label": "previous MTP depth",
+          "operation": "previous MTP depth",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "1", "D"],
+          "kind": "flow"
+        },
+        {
+          "id": "embed2--combine2",
+          "source": "embed2",
+          "target": "combine2",
+          "label": "shifted embedding",
+          "operation": "shifted embedding",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "D"],
+          "kind": "flow"
+        },
+        {
+          "id": "combine2--mtp2",
+          "source": "combine2",
+          "target": "mtp2",
+          "label": "project 2D → D",
+          "operation": "project 2D → D",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "1", "D"],
+          "kind": "flow"
+        },
+        {
+          "id": "mtp2--head2",
+          "source": "mtp2",
+          "target": "head2",
+          "label": "shared output head",
+          "operation": "shared output head",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "1", "D"],
+          "kind": "flow"
+        },
+        {
+          "id": "next--verify",
+          "source": "next",
+          "target": "verify",
+          "label": "draft t+1",
+          "operation": "draft t+1",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "1"],
+          "kind": "auxiliary"
+        },
+        {
+          "id": "head1--verify",
+          "source": "head1",
+          "target": "verify",
+          "label": "draft t+2",
+          "operation": "draft t+2",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "1"],
+          "kind": "auxiliary"
+        },
+        {
+          "id": "head2--verify",
+          "source": "head2",
+          "target": "verify",
+          "label": "draft t+3",
+          "operation": "draft t+3",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "1"],
+          "kind": "auxiliary"
+        },
+        {
+          "id": "verify--compare",
+          "source": "verify",
+          "target": "compare",
+          "label": "causal verification",
+          "operation": "causal verification",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "T"],
+          "kind": "flow"
+        },
+        {
+          "id": "compare--reject",
+          "source": "compare",
+          "target": "reject",
+          "label": "first mismatch",
+          "operation": "first mismatch",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "1"],
+          "kind": "state"
+        },
+        {
+          "id": "compare--commit",
+          "source": "compare",
+          "target": "commit",
+          "label": "matching prefix",
+          "operation": "matching prefix",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "1"],
+          "kind": "flow"
+        },
+        {
+          "id": "reject--commit",
+          "source": "reject",
+          "target": "commit",
+          "label": "main-model correction",
+          "operation": "main-model correction",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "1"],
+          "kind": "state"
+        },
+        {
+          "id": "next--commit",
+          "source": "next",
+          "target": "commit",
+          "label": "ordinary decoding",
+          "operation": "ordinary decoding",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "1"],
+          "kind": "auxiliary"
+        },
+        {
+          "id": "commit--decode",
+          "source": "commit",
+          "target": "decode",
+          "label": "confirmed IDs",
+          "operation": "confirmed IDs",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "S"],
+          "kind": "flow"
+        },
+        {
+          "id": "decode--feedback",
+          "source": "decode",
+          "target": "feedback",
+          "label": "continue / stop",
+          "operation": "continue / stop",
+          "description": "See the connected components for the exact inference operation and the role of tentative versus committed state.",
+          "shape": ["B", "S"],
+          "kind": "flow"
+        }
+      ],
+      "layout": {
+        "direction": "RIGHT",
+        "positions": {}
+      }
+    },
+    {
+      "id": "whole-model",
+      "title": "Every layer. Every connection.",
+      "subtitle": "The complete inference graph, expanded onto one canvas.",
+      "description": "All decoder layers, per-query-head outputs, per-KV-head state views, tokenizer, feed-forward networks, final vocabulary head and the generation / MTP verification loop. The optional n-gram branch is shown as an architectural extension and is inactive in the numerical simulator. Training losses remain in the dedicated MTP study view.",
+      "nodes": [
+        {
+          "id": "whole-model-recipe",
+          "kind": "model-expansion",
+          "title": "Expand the complete model",
+          "subtitle": "A recipe referencing the authored study graphs",
+          "category": "compute",
+          "description": "The renderer expands this recipe into stable component instances. Saved positions refer to those generated instance IDs. Authored explanations and graph templates remain the only source of model content.",
+          "tensors": [],
+          "notes": [],
+          "sourceIds": ["attention", "deepseek", "speculative"],
+          "extensions": {
+            "model-visualizer.expansion": {
+              "version": 1,
+              "input": {
+                "graph": "tokenization",
+                "entry": "text",
+                "exit": "lookup"
+              },
+              "layers": {
+                "graph": "block",
+                "entry": "input",
+                "exit": "add2",
+                "expand": [
+                  {
+                    "node": "attn",
+                    "graph": "attention",
+                    "entry": "x",
+                    "exit": "project"
+                  },
+                  {
+                    "node": "swiglu",
+                    "graph": "feedforward",
+                    "entry": "ffx",
+                    "exit": "down"
+                  }
+                ]
+              },
+              "output": {
+                "graph": "output",
+                "entry": "finalnorm",
+                "exit": "decode"
+              },
+              "memory": {
+                "graph": "memory",
+                "entry": "ngrams",
+                "exit": "fusion"
+              },
+              "generation": {
+                "graph": "generation",
+                "entry": "next",
+                "exit": "feedback"
+              }
+            }
+          }
+        }
+      ],
+      "edges": [],
       "layout": {
         "direction": "RIGHT",
         "positions": {}

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { expandWholeModel } from './whole-model.ts'
 
 const text = z.string().max(24000)
 const id = z
@@ -77,7 +78,7 @@ const graphSchema = z.strictObject({
       .strictObject({
         x: z.number().finite(),
         y: z.number().finite(),
-        zoom: z.number().min(0.05).max(4),
+        zoom: z.number().min(0.001).max(4),
       })
       .optional(),
   }),
@@ -202,7 +203,8 @@ export function parseDocument(input: unknown): ModelDocument {
   const sourceIds = new Set(doc.sources.map((s) => s.id))
   if (sourceIds.size !== doc.sources.length) throw new Error('Source IDs must be unique.')
   const symbols = dimensions(c)
-  for (const graph of doc.graphs) {
+  for (const authored of doc.graphs) {
+    const graph = expandWholeModel(doc, authored)
     const ids = new Set(graph.nodes.map((n) => n.id))
     if (ids.size !== graph.nodes.length) throw new Error(`Duplicate node ID in ${graph.id}.`)
     if (new Set(graph.edges.map((e) => e.id)).size !== graph.edges.length)

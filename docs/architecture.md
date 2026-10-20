@@ -2,19 +2,23 @@
 
 ## Layers of responsibility
 
-| Location                                          | Responsibility                                                                                                |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `examples/*.model.json`                           | Authored model semantics, nested graph references, equations, sources, notes, positions and viewports         |
-| `src/model/schema.ts`                             | Runtime schema, reference validation, restricted dimension parser, cache accounting and types                 |
-| `src/model/tokenizer.ts`                          | Tokenizer adapter interface, real demonstration byte-BPE, labelled synthetic attention probabilities          |
-| `src/model/layout.ts`                             | ELK arrangements scored using the complete routed diagram                                                     |
-| `src/model/routing.ts`, `geometry.ts`             | Distinct ports, obstacle-aware libavoid routing, label placement, geometry checks and bounds                  |
-| `src/model/diagram.worker.ts`, `layout-client.ts` | Worker protocol, WASM initialization and coalescing of drag requests                                          |
-| `src/model/storage.ts`                            | Transactional import, export and browser-local persistence                                                    |
-| `src/components/GraphCanvas.tsx`                  | React Flow rendering, node dragging, edge inspection, layout and viewport controls                            |
-| `src/components/Inspector.tsx`                    | Explanations, tensors, equations, primary references and notebook                                             |
-| `src/components/Labs.tsx`                         | BPE trace, head sharing/heatmap, dimensioned KV slice, illustrative n-gram addresses and MTP target alignment |
-| `src/App.tsx`                                     | Workspace state, navigation, configuration and document lifecycle                                             |
+| Location                                                 | Responsibility                                                                                                |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `examples/*.model.json`                                  | Authored model semantics, nested graph references, equations, sources, notes, positions and viewports         |
+| `src/model/schema.ts`                                    | Runtime schema, reference validation, restricted dimension parser, cache accounting and types                 |
+| `src/model/tokenizer.ts`                                 | Tokenizer adapter interface, real demonstration byte-BPE, labelled synthetic attention probabilities          |
+| `src/model/whole-model.ts`                               | Deterministic whole-model expansion from authored recipes and source templates                                |
+| `src/model/group-layout.ts`                              | Stage-local layout/routing plus fixed-obstacle inter-stage routing for expanded models                        |
+| `src/model/simulation.ts`                                | Renderer-neutral graphical execution trace, causal verification scenarios and KV-state accounting             |
+| `src/components/SimulationPanel.tsx`, `useSimulation.ts` | Packet/state visualization, playback, timeline, step detail and camera follow                                 |
+| `src/model/layout.ts`                                    | ELK arrangements scored using the complete routed diagram                                                     |
+| `src/model/routing.ts`, `geometry.ts`                    | Distinct ports, obstacle-aware libavoid routing, label placement, geometry checks and bounds                  |
+| `src/model/diagram.worker.ts`, `layout-client.ts`        | Worker protocol, WASM initialization and coalescing of drag requests                                          |
+| `src/model/storage.ts`                                   | Transactional import, export and browser-local persistence                                                    |
+| `src/components/GraphCanvas.tsx`                         | React Flow rendering, node dragging, edge inspection, layout and viewport controls                            |
+| `src/components/Inspector.tsx`                           | Explanations, tensors, equations, primary references and notebook                                             |
+| `src/components/Labs.tsx`                                | BPE trace, head sharing/heatmap, dimensioned KV slice, illustrative n-gram addresses and MTP target alignment |
+| `src/App.tsx`                                            | Workspace state, navigation, configuration and document lifecycle                                             |
 
 React Flow is the viewport/interaction layer; it does not own the portable document contract. ELK handles graph arrangement; libavoid handles orthogonal routing. Both execute outside the rendering thread. KaTeX renders untrusted equations with trust disabled and bounded expansion. Fonts and the routing WASM are bundled, and the running app makes no inference or font-service requests.
 
@@ -32,6 +36,8 @@ Importing a document remounts graph state even if the document and graph IDs mat
 
 Each graph is a flat set of nodes and directed connections. A node's `childGraph` navigates to an independent detailed graph; `repeat` describes repeated blocks without drawing hundreds of copies. Each decoder layer has separate conceptual parameters/state. The selected layer is explicit in block/attention/feed-forward views and connected to the cache slice selector.
 
+The opt-in `model-visualizer.expansion` recipe creates an additional whole-model canvas from these same templates. It instantiates every main layer, explicit query-head results and per-KV-head state views, without storing duplicate generated model content. Stable instance IDs own saved layout positions; semantic validation expands the recipe to validate them. Compatible older workspaces are enriched without replacing notes or study layouts. See the model-format contract and [simulation design](simulation.md).
+
 Connections may represent flow, residual additions, state access or auxiliary paths. All links participate in placement and routing, including optional branches. Cycles can be described, but time-step/state semantics must be explained explicitly; this is not a recurrent execution engine.
 
 Default overview positions are hand composed. Auto-layout deliberately replaces positions and side overrides for the active graph, then fits the complete result, including labels and exterior routes. The undo button restores the previous positions, direction, side overrides and viewport (up to ten automatic layouts while the graph stays open). Manual dragging reroutes connections without rearranging other nodes; dropping onto another node moves the dragged node to nearby free space.
@@ -45,6 +51,8 @@ Default overview positions are hand composed. Auto-layout deliberately replaces 
 5. Validate endpoint attachment, orthogonality, reversals, bends at labels, node/label collisions and annotation leaders before displaying a result. Overlapping or impossible imported geometry produces a visible request for more room rather than an obstructed route. Auto-layout remains available, and unsuccessful layout preserves the current arrangement.
 
 The worker coalesces drag updates and discards superseded results. Stale edges are withheld while moved geometry is being routed. React Flow handles are measured before their edges appear. The viewport fit uses route and label bounds as well as node bounds, with padding for canvas controls.
+
+Expanded models are arranged and routed by stage first, then placed in a deterministic serpentine grid. A shared global port allocation is used for both local and inter-stage paths. The inter-stage router treats internal labels and annotation leaders as fixed obstacles and excludes fixed internal paths from label placement. The complete merged result still passes the same collision validator. This bounds layout complexity without hiding components or connections. Whole-map fit supports zooms down to `0.001`; stage navigation and search bring individual operations back into view. Node/port measurement is batched once per graph update, rather than forcing a render per component.
 
 Only authored positions, direction and viewport are persisted; routes and ports are deterministic derived geometry. No document-version change or duplicate routing data is required. Keep the fixed node/label sizes shared between CSS, geometry and tests when changing the design.
 
@@ -66,7 +74,7 @@ The logical dense KV size is `2 × L × B × Hkv × S × Dh × scalarBytes`, wit
 
 **Attention architecture:** MHA/GQA/MQA use the same dense logical state representation. MLA requires a new cache representation and configuration profile, not relabelled GQA. Windowed/sparse/linear attention similarly needs explicit mask/state semantics. Version the document contract when necessary.
 
-**Actual traces:** introduce an independent trace schema keyed by document/model hash, graph/component ID, layer, head, step and tensor name. Include shape, dtype, positions, provenance and sampling/downsampling metadata. Keep large arrays out of layout files. Never replace synthetic examples silently with inferred data.
+**Actual traces:** the new graphical execution adapter and frame types establish a renderer-neutral playback boundary, with provenance and stable component IDs. Only illustrative execution is currently implemented. A numerical/measured adapter still needs a validated external trace schema keyed by document/model hash, layer, head, step and tensor name, with dtype, positions and sampling/downsampling metadata. Keep large arrays out of layout files. Never replace synthetic examples silently with inferred data.
 
 **MoE:** add router, scores, top-k selection, per-expert FFNs, dispatch/combine and optional shared experts. Distinguish total parameters from activated parameters. A static branching diagram alone is insufficient to demonstrate token-specific routing.
 

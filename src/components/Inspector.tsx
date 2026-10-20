@@ -19,6 +19,7 @@ import {
   type Tensor,
 } from '../model/schema'
 import type { Selection } from './GraphCanvas'
+import { expandWholeModel } from '../model/whole-model'
 
 type Props = {
   doc: ModelDocument
@@ -80,7 +81,10 @@ export function Inspector({
   notify,
 }: Props) {
   const [tab, setTab] = useState<'inspect' | 'notes'>('inspect')
-  const graph = doc.graphs.find((g) => g.id === doc.ui.activeGraph)!
+  const graph = expandWholeModel(
+    doc,
+    doc.graphs.find((g) => g.id === doc.ui.activeGraph)!,
+  )
   const component: Component | undefined =
     selection?.type === 'node' ? graph.nodes.find((n) => n.id === selection.id) : undefined
   const connection: Connection | undefined =

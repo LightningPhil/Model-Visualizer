@@ -3,6 +3,7 @@ import wasmUrl from 'libavoid-wasm?url'
 import elkWorkerUrl from 'elkjs/lib/elk-worker.min.js?url'
 import { configureLayoutWorker, planLayout } from './layout'
 import { routeGraph, routingProblems } from './routing'
+import { routeGrouped, usesStageLayout } from './group-layout'
 import type { DiagramRequest } from './layout-client'
 
 const ready = Promise.all([AvoidLib.load(wasmUrl), configureLayoutWorker(elkWorkerUrl)]).then(() =>
@@ -17,7 +18,12 @@ self.onmessage = async (event: MessageEvent<DiagramRequest>) => {
       const result = await planLayout(engine, request.graph, request.direction)
       self.postMessage({ id: request.id, result })
     } else {
-      const result = routeGraph(engine, request.graph, request.positions!, request.direction)
+      const result = (usesStageLayout(request.graph) ? routeGrouped : routeGraph)(
+        engine,
+        request.graph,
+        request.positions!,
+        request.direction,
+      )
       const problems = routingProblems(request.graph, request.positions!, result)
       if (problems.length)
         throw new Error(
