@@ -101,7 +101,7 @@ test('exports notes, theme, model content and saved layouts as valid JSON', asyn
   expect(exported.ui.notes).toBe('Inspect GQA sharing next.\nUse source equations.')
   expect(exported.ui.theme).toBe('light')
   expect(exported.graphs[0].layout.positions.decoder).toEqual({ x: 365, y: 205 })
-  expect(exported.graphs).toHaveLength(11)
+  expect(exported.graphs).toHaveLength(13)
   await page.getByLabel('Open model JSON').setInputFiles((await download.path()) as string)
   await expect(page.getByLabel('Workspace notes')).toHaveValue(exported.ui.notes)
 })

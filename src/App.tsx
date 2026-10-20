@@ -48,9 +48,14 @@ import { Dialog } from './components/Dialog'
 import { addWholeModelView, expandWholeModel, instanceOf, isWholeModel } from './model/whole-model'
 import { useSimulation } from './components/useSimulation'
 import { SimulationPanel, SimulationStrip } from './components/SimulationPanel'
+import { configurationLayouts } from './model/configuration-layouts'
+import { upgradeCachePolicies } from './model/policy-upgrade'
+import { cachePolicyLabel, residentCount, kvHeadFor } from './model/attention'
+import { CachePolicyControls } from './components/CachePolicyControls'
 
 const referenceDocument = parseDocument(starter)
-const upgrade = (doc: ModelDocument) => addWholeModelView(doc, referenceDocument)
+const upgrade = (doc: ModelDocument) =>
+  addWholeModelView(upgradeCachePolicies(doc, referenceDocument), referenceDocument)
 
 const labels: Record<string, string> = {
   overview: 'Architecture overview',
@@ -64,8 +69,17 @@ const labels: Record<string, string> = {
   mtp: 'Multi-token prediction',
   generation: 'Generation & verification',
   'whole-model': 'Whole model',
+  'attention-heads': 'Split attention heads',
+  'whole-model-heads': 'Whole model · split heads',
 }
-const labGraphs = new Set(['tokenization', 'attention', 'cache', 'memory', 'mtp'])
+const labGraphs = new Set([
+  'tokenization',
+  'attention',
+  'attention-heads',
+  'cache',
+  'memory',
+  'mtp',
+])
 
 export default function App() {
   const [doc, setDoc] = useState<ModelDocument>(() => upgrade(loadWorkspace() ?? referenceDocument))
@@ -87,6 +101,7 @@ export default function App() {
   const [saved, setSaved] = useState(true)
   const [documentRevision, setDocumentRevision] = useState(0)
   const [selectedLayer, setSelectedLayer] = useState(0)
+  const [selectedHead, setSelectedHead] = useState(0)
   const fileInput = useRef<HTMLInputElement>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
@@ -96,8 +111,9 @@ export default function App() {
     [doc.graphs, doc.config, authoredGraph],
   )
   const wholeModel = doc.graphs.find(isWholeModel)
-  const whole = Boolean(wholeModel?.id === graph.id)
-  const sim = useSimulation(doc.config, simulating && whole)
+  const whole = isWholeModel(authoredGraph)
+  const splitHeads = graph.id === 'whole-model-heads' || graph.id === 'attention-heads'
+  const sim = useSimulation(doc.config, simulating && whole, splitHeads)
   const simulationFrame = sim.frame
   const encoded = useMemo(() => demoTokenizer.encode(doc.ui.prompt), [doc.ui.prompt])
   const tokenizerSupported =
@@ -111,6 +127,19 @@ export default function App() {
             ...dimensions(doc.config),
             T: simulationFrame.queryLength,
             S: Math.max(simulationFrame.contextLength, ...simulationFrame.cacheLengths),
+            R: Math.max(...simulationFrame.cachePositions.map((p) => p.length)),
+            P: residentCount(
+              doc.config,
+              Math.max(0, Math.max(...simulationFrame.cacheLengths) - simulationFrame.queryLength),
+            ),
+            U:
+              residentCount(
+                doc.config,
+                Math.max(
+                  0,
+                  Math.max(...simulationFrame.cacheLengths) - simulationFrame.queryLength,
+                ),
+              ) + simulationFrame.queryLength,
           }
         : dimensions(doc.config, tokenCount, decode),
     [doc.config, tokenCount, decode, simulationFrame],
@@ -191,22 +220,7 @@ export default function App() {
 
   function setConfig(changes: Partial<ModelConfig>) {
     try {
-      const candidate = { ...doc, config: { ...doc.config, ...changes } }
-      // Prune obsolete derived IDs after a head/layer-count edit, retaining
-      // positions for every instance that still exists.
-      candidate.graphs = candidate.graphs.map((g) => {
-        if (!isWholeModel(g)) return g
-        const ids = new Set(expandWholeModel(candidate, g).nodes.map((n) => n.id))
-        return {
-          ...g,
-          layout: {
-            ...g.layout,
-            positions: Object.fromEntries(
-              Object.entries(g.layout.positions).filter(([id]) => ids.has(id)),
-            ),
-          },
-        }
-      })
+      const candidate = configurationLayouts(doc, { ...doc, config: { ...doc.config, ...changes } })
       const next = parseDocument(candidate)
       setDoc(next)
     } catch (error) {
@@ -239,6 +253,14 @@ export default function App() {
     [doc.graphs, doc.config, query],
   )
   const layer = Math.min(selectedLayer, doc.config.nLayers - 1)
+  function focusHead(head: number) {
+    setSelectedHead(head)
+    if (!splitHeads) return
+    const id = `${whole ? `layer-${layer}.attn.` : ''}scores-${head}`
+    sim.setPlaying(false)
+    setSelection({ type: 'node', id })
+    setFocus({ id, revision: Date.now() })
+  }
   const labProps = {
     config: doc.config,
     encoded,
@@ -247,6 +269,9 @@ export default function App() {
     decode,
     layer,
     onLayer: setSelectedLayer,
+    onCachePolicy: (kvCache: ModelConfig['kvCache']) => setConfig({ kvCache }),
+    onHead: focusHead,
+    head: selectedHead,
   }
 
   return (
@@ -357,7 +382,7 @@ export default function App() {
               <button
                 className={`journey-button ${simulating ? 'active' : ''}`}
                 onClick={() => {
-                  openGraph(wholeModel.id)
+                  openGraph(whole ? graph.id : wholeModel.id)
                   setSimulating(true)
                   setInspectorOpen(true)
                 }}
@@ -436,6 +461,9 @@ export default function App() {
               {doc.config.nQueryHeads / doc.config.nKvHeads} query head
               {doc.config.nQueryHeads / doc.config.nKvHeads === 1 ? '' : 's'} per KV head
             </span>
+            <button className="cache-policy-shortcut" onClick={() => setModal('config')}>
+              KV cache · {cachePolicyLabel(doc.config)}
+            </button>
           </div>
         </div>
         <div className="sidebar-bottom">
@@ -554,6 +582,45 @@ export default function App() {
           </section>
         )}
         <div className="graph-toolbar">
+          {splitHeads && (
+            <label className="whole-model-jump">
+              Head
+              <select
+                aria-label="Inspect query head"
+                value={Math.min(selectedHead, doc.config.nQueryHeads - 1)}
+                onChange={(e) => focusHead(Number(e.target.value))}
+              >
+                <option value="">Choose a head…</option>
+                {Array.from({ length: doc.config.nQueryHeads }, (_, h) => (
+                  <option key={h} value={h}>
+                    Q{h} → K{kvHeadFor(doc.config, h)} / V{kvHeadFor(doc.config, h)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {(whole || ['attention', 'attention-heads'].includes(graph.id)) &&
+            doc.graphs.some((g) => g.id === 'attention-heads') && (
+              <button
+                className="head-detail-button"
+                aria-pressed={splitHeads}
+                onClick={() => {
+                  const playing = simulating
+                  openGraph(
+                    whole
+                      ? splitHeads
+                        ? wholeModel!.id
+                        : 'whole-model-heads'
+                      : splitHeads
+                        ? 'attention'
+                        : 'attention-heads',
+                  )
+                  setSimulating(playing)
+                }}
+              >
+                {splitHeads ? 'Batched attention' : 'Split attention heads'}
+              </button>
+            )}
           {whole && (
             <label className="whole-model-jump">
               Jump to
@@ -563,6 +630,8 @@ export default function App() {
                 onChange={(event) => {
                   const node = graph.nodes.find((n) => instanceOf(n)?.stage === event.target.value)
                   if (node) {
+                    const layer = instanceOf(node)?.layer
+                    if (layer !== undefined) setSelectedLayer(layer)
                     sim.setPlaying(false)
                     setFocus({ id: node.id, revision: Date.now() })
                   }
@@ -587,7 +656,9 @@ export default function App() {
                   Decode step
                 </button>
               </div>
-              {['block', 'attention', 'feedforward', 'cache'].includes(graph.id) && (
+              {['block', 'attention', 'attention-heads', 'feedforward', 'cache'].includes(
+                graph.id,
+              ) && (
                 <label className="layer-selector">
                   ℓ
                   <select
@@ -710,7 +781,7 @@ export default function App() {
             >
               <FlaskConical size={14} />
               <span>
-                {graph.id === 'attention'
+                {['attention', 'attention-heads'].includes(graph.id)
                   ? 'Attention head explorer'
                   : graph.id === 'cache'
                     ? 'KV tensor explorer'
@@ -730,7 +801,7 @@ export default function App() {
                 <div className="empty-lab">Enter a prompt to explore this pathway.</div>
               ) : graph.id === 'tokenization' ? (
                 <TokenizerLab key={doc.ui.prompt} {...labProps} />
-              ) : graph.id === 'attention' ? (
+              ) : ['attention', 'attention-heads'].includes(graph.id) ? (
                 <AttentionLab {...labProps} />
               ) : graph.id === 'cache' ? (
                 <CacheLab {...labProps} />
@@ -771,6 +842,7 @@ export default function App() {
             <SimulationPanel
               sim={sim}
               config={doc.config}
+              onCachePolicy={(kvCache) => setConfig({ kvCache })}
               ready={diagramReady}
               onClose={() => {
                 sim.setPlaying(false)
@@ -911,6 +983,7 @@ export default function App() {
               </select>
             </label>
           </div>
+          <CachePolicyControls config={doc.config} onChange={(kvCache) => setConfig({ kvCache })} />
           <div className="configuration-result">
             <Cpu size={20} />
             <div>
@@ -1039,8 +1112,8 @@ export default function App() {
                 <h3>What comes next</h3>
                 <p>
                   The foundation is a dense, decoder-only model. Separate future definitions can
-                  describe MoE routing, MLA, sliding-window and sparse attention, encoder–decoder
-                  models, alternative positional encodings and custom tokenizers. Each needs an
+                  describe MoE routing, MLA, more advanced sparse patterns, encoder–decoder models,
+                  alternative positional encodings and custom tokenizers. Each needs an
                   architecture-specific graph and sources.
                 </p>
               </>

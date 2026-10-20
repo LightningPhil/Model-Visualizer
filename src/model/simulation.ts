@@ -1,4 +1,5 @@
 import type { ModelConfig } from './schema'
+import { cachePolicyLabel, residentPositions } from './attention'
 
 /** A renderer-neutral trace. A future numerical/local-model adapter can emit
  * the same frames with measured tensors and actual token IDs. The graphical
@@ -28,6 +29,8 @@ export type SimulationFrame = {
   queryLength: number
   contextLength: number
   cacheLengths: number[]
+  cachePositions: number[][]
+  evictedPositions: number[][]
   confirmed: Packet[]
   proposals: Packet[]
   generated: number
@@ -41,6 +44,7 @@ export type SimulationOptions = {
   newTokens: number
   mtp: boolean
   scenario: 'mixed' | 'accept' | 'reject'
+  splitHeads?: boolean
 }
 export type SimulationTrace = {
   provenance: {
@@ -87,6 +91,13 @@ export const graphicalAdapter: ExecutionAdapter = {
     }))
     let proposals: Packet[] = [],
       cacheLengths = Array(config.nLayers).fill(0) as number[]
+    let cachePositions: number[][] = Array.from({ length: config.nLayers }, () => [])
+    let evictedPositions: number[][] = Array.from({ length: config.nLayers }, () => [])
+    function retain(layer: number, length: number) {
+      const next = residentPositions(config, length)
+      evictedPositions[layer] = cachePositions[layer].filter((p) => !next.includes(p))
+      cachePositions[layer] = next
+    }
     const generated = () => confirmed.length - promptTokens
     function emit(
       nodeIds: string[],
@@ -106,6 +117,8 @@ export const graphicalAdapter: ExecutionAdapter = {
         queryLength,
         contextLength: confirmed.length,
         cacheLengths: [...cacheLengths],
+        cachePositions: cachePositions.map((p) => [...p]),
+        evictedPositions: evictedPositions.map((p) => [...p]),
         confirmed: confirmed.map((p) => ({ ...p })),
         proposals: proposals.map((p) => ({ ...p })),
         generated: generated(),
@@ -120,7 +133,27 @@ export const graphicalAdapter: ExecutionAdapter = {
       phase = verify ? 'verify' : prefixLength === 0 ? 'prefill' : 'decode'
       for (let layer = 0; layer < config.nLayers; layer++) {
         const p = `layer-${layer}`
-        const at = (...ids: string[]) => ids.map((id) => `${p}.${id}`)
+        const at = (...ids: string[]) => [
+          ...new Set(
+            ids.flatMap((id) => {
+              if (!options.splitHeads) return [`${p}.${id}`]
+              const operation = (
+                {
+                  'attn.scores': 'scores',
+                  'attn.scale': 'scale',
+                  'attn.softmax': 'softmax',
+                  'attn.weighted': 'head',
+                } as Record<string, string>
+              )[id]
+              if (operation)
+                return Array.from(
+                  { length: config.nQueryHeads },
+                  (_, h) => `${p}.attn.${operation}-${h}`,
+                )
+              return [`${p}.${id}`]
+            }),
+          ),
+        ]
         emit(
           at('input'),
           `Layer ${layer} · residual input`,
@@ -150,6 +183,17 @@ export const graphicalAdapter: ExecutionAdapter = {
           layer,
         )
         cacheLengths[layer] = prefixLength + count
+        evictedPositions[layer] = []
+        if (verify) {
+          // Retain the checkpoint AND all trial positions until verification.
+          // Early proposals may need keys that a final rolling window evicts.
+          cachePositions[layer] = [
+            ...new Set([
+              ...cachePositions[layer],
+              ...Array.from({ length: count }, (_, i) => prefixLength + i),
+            ]),
+          ]
+        } else retain(layer, prefixLength + count)
         emit(
           at(
             'attn.cachek',
@@ -158,12 +202,17 @@ export const graphicalAdapter: ExecutionAdapter = {
             ...Array.from({ length: config.nKvHeads }, (_, h) => `attn.cachev-${h}`),
           ),
           verify ? 'Write tentative K/V' : 'Append layer K/V',
-          `Layer ${layer} now holds ${cacheLengths[layer]} sequence positions per KV head. ${verify ? 'These positions can be rolled back after verification.' : 'Earlier prefix state is reused.'}`,
+          `Layer ${layer} holds ${cachePositions[layer].length} resident positions per KV head (${cachePolicyLabel(config)}). ${verify ? 'The checkpoint and trial positions are pinned until acceptance; no irreversible eviction occurs.' : `${evictedPositions[layer].length} old positions evicted; absolute position IDs are preserved. Current-call keys remain transiently available to all its queries.`}`,
           false,
           layer,
         )
         emit(
-          at('attn.scores'),
+          at(
+            'attn.scores',
+            ...(options.splitHeads
+              ? Array.from({ length: config.nQueryHeads }, (_, h) => `attn.query-${h}`)
+              : []),
+          ),
           'Query–key dot products',
           `Each query contracts with its mapped KV head over Dh = ${config.headDim} features.`,
           false,
@@ -171,8 +220,8 @@ export const graphicalAdapter: ExecutionAdapter = {
         )
         emit(
           at('attn.scale'),
-          'Scale and apply the causal mask',
-          'A query can read the existing prefix and preceding positions in the current batch; future proposals are masked.',
+          'Scale and apply the attention mask',
+          `Apply the ${cachePolicyLabel(config)} visibility policy at each absolute query position. Future positions are always masked, including within a verification batch.`,
           false,
           layer,
         )
@@ -419,6 +468,7 @@ export const graphicalAdapter: ExecutionAdapter = {
       if (rejectedTail) {
         phase = 'rollback'
         cacheLengths = cacheLengths.map(() => prefix + matching)
+        for (let l = 0; l < config.nLayers; l++) retain(l, prefix + matching)
         emit(
           ['generation.reject'],
           'Roll back tentative K/V',
@@ -427,6 +477,8 @@ export const graphicalAdapter: ExecutionAdapter = {
         )
       }
       tentative = false
+      // Acceptance commits retention only after all trial queries are checked.
+      if (!rejectedTail) for (let l = 0; l < config.nLayers; l++) retain(l, cacheLengths[l])
       confirmed.push(...Array.from({ length: matching }, (_, j) => packet(base + j, 'confirmed')))
       const extra = generated() < newTokens
       if (extra) confirmed.push(packet(generated(), rejectedTail ? 'correction' : 'bonus'))

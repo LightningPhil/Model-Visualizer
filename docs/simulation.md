@@ -1,6 +1,6 @@
 # Graphical execution
 
-Open **Whole model** to see the entire default inference architecture on one canvas: 252 components and 346 connections. **Run simulation** uses the same canvas with active operations and moving packet glyphs. Input/output are abstract packets; no text is needed. Every main decoder layer, all query-head results, and each K/V head slice is instantiated explicitly. The two additional MTP decoder modules are identified as separate inference components; the dedicated block/attention views explain their decoder operations. The optional n-gram extension remains visible but inactive. Training losses remain in the MTP study view.
+Open **Whole model** to see the entire default inference architecture on one canvas: 252 components and 358 connections. **Run simulation** uses the same canvas with active operations and moving packet glyphs. Input/output are abstract packets; no text is needed. Every main decoder layer, all query-head results, and each K/V head slice is instantiated explicitly. The two additional MTP decoder modules are identified as separate inference components; the dedicated block/attention views explain their decoder operations. The optional n-gram extension remains visible but inactive. Training losses remain in the MTP study view.
 
 The simulator is an **illustrative control-flow model**, with no weights, logits, measured attention values, model downloads or inference service. Packet IDs `P0`, `G0` and `D1.2` are visual identities, not vocabulary token IDs. Its arithmetic tracks query counts, sequence positions and logical KV size from the selected architecture.
 
@@ -10,7 +10,7 @@ Choose input packet count, output budget, autoregressive or MTP mode, and a veri
 
 Prefill supplies all prompt query positions, writes each layer's own K/V state, and uses a causal mask. Decode reuses that prefix and processes one new query token at a time. The display shows each layer's sequence count independently, so state grows as the pass reaches that layer. A selected final output token need not be cached when no subsequent forward pass is required.
 
-The cache strip represents the sequence axis, not a physical allocation map or a table hierarchy. Each layer contains separate logical K and V tensors `[B,Hkv,S,Dh]`; the full dense state is indexed by `[L,B,Hkv,S,Dh]`. Logical byte totals exclude allocator overhead, padding, sharding and quantization metadata.
+The cache strip represents the sequence axis, not a physical allocation map or a table hierarchy. Each layer contains separate logical K and V tensors `[B,Hkv,R,Dh]` plus absolute position IDs; all-layer state is indexed by `[L,B,Hkv,R,Dh]`. R follows full, sparse or sliding-window retention. Current-call working keys can be larger than final retained state. Logical byte totals exclude allocator overhead, padding, sharding and quantization metadata.
 
 ## MTP proposal and verification
 
@@ -31,3 +31,5 @@ This is greedy prefix verification. [Leviathan et al., 2023](https://proceedings
 `src/model/simulation.ts` contains the renderer-neutral `ExecutionAdapter`, `SimulationTrace` and `SimulationFrame` contracts. Graph instance IDs connect execution to model components. Frame snapshots record phases, active components, packet state, query/context counts, per-layer KV lengths, tentative state and acceptance outcomes. Earlier frames are immutable snapshots, so scrubbing never reruns or changes a decision. `useSimulation.ts` owns playback; the React Flow renderer consumes active/completed IDs and does not compute inference.
 
 Trace provenance distinguishes `illustrative`, `numerical`, and `measured` execution and can identify a model revision. Only the graphical adapter is implemented. A numerical or real-model adapter must supply its actual tokenizer/weights/configuration provenance, real choices and cache behavior, and extend the trace explicitly for tensor payloads, sampling distributions and physical storage details. Keep large tensors in a separate trace artifact. Do not fabricate measurements or silently reinterpret an illustrative run as inference. Any future network inference needs a user-requested design and explicit visible controls.
+
+Cache policies and split head playback are described in [attention and cache](attention-and-cache.md). Trial writes pin the retained checkpoint until verification commits; rollback never assumes that an overwritten ring-buffer entry can be recovered.

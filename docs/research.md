@@ -47,7 +47,7 @@ MLA stores a different representation from dense K/V. Its low-rank latent and po
 
 [FlashAttention](https://arxiv.org/abs/2205.14135) is an exact, IO-aware implementation of attention that avoids materializing the entire score/probability matrices. A logical attention heatmap should therefore not imply that a kernel allocated that matrix. [PagedAttention](https://arxiv.org/abs/2309.06180) concerns physical KV-memory management. Head sharing, visibility masks, numerical kernels and physical allocation should be independent concepts in future model descriptions.
 
-The [Mistral 7B paper](https://arxiv.org/abs/2310.06825) is a primary source for a future sliding-window example. [Mixtral of Experts](https://arxiv.org/abs/2401.04088) provides a concrete routed-expert model for a later per-token dispatch view. Neither is currently presented as an executable model preset.
+The [Mistral 7B paper](https://arxiv.org/abs/2310.06825) is the primary source for the workbench’s sliding-window and rolling-buffer explanations. [Mixtral of Experts](https://arxiv.org/abs/2401.04088) provides a concrete routed-expert model for a later per-token dispatch view. Neither is currently presented as an executable model preset.
 
 ## KV cache conventions
 
@@ -70,7 +70,7 @@ Output token IDs are **decoded** back to bytes/text; they are not re-encoded. A 
 1. **This foundation:** reliable graph interaction, mathematics, tokenizer trace, tensor shapes, logical cache view and portable document contract.
 2. **Exact tokenizer lab:** user-specified tokenizer adapter, original ranks/config, precise span alignment and specialized operations. Preserve the current adapter boundary.
 3. **Named model documents:** pinned official model revision/config, real parameter dimensions, documented discrepancies, verified per-model sources.
-4. **New architecture profiles:** MLA, MoE routing and sparse/windowed attention with proper state schemas and masks. Migrate versioned documents where necessary.
+4. **New architecture profiles:** MLA, MoE routing and additional sparse/linear patterns with proper state schemas and masks. Migrate versioned documents where necessary.
 5. **Trace playback:** import real tensor/activation traces separately from model/layout files, validate their provenance and shapes, then add token/head/layer/step playback.
 6. **Comparisons and scale:** graph diff, reusable subgraphs, port-aware validation, large-model level-of-detail rendering, shared layout libraries and version migrations.
 

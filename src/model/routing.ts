@@ -245,7 +245,39 @@ function placeLabels(
         if (high >= low) {
           const mid = (low + high) / 2
           const samples = new Set([mid, low, high, low + (high - low) / 4, high - (high - low) / 4])
-          for (let p = low; p <= high; p += 24) samples.add(p)
+          // Exterior lanes in whole-model maps can span tens of thousands of
+          // pixels. Bound uniform sampling, then include obstacle boundaries
+          // so a short clear interval is still considered at any map scale.
+          const step = Math.max(24, (high - low) / 48)
+          for (let p = low; p <= high; p += step) samples.add(p)
+          if (step > 24) {
+            const boundary = (rect: Rect, clearance: number) => {
+              const cross = horizontal ? segment.a.y : segment.a.x
+              const halfCross = (horizontal ? size.height : size.width) / 2
+              const startCross = horizontal ? rect.y : rect.x
+              const endCross = startCross + (horizontal ? rect.height : rect.width)
+              if (
+                endCross + clearance < cross - halfCross ||
+                startCross - clearance > cross + halfCross
+              )
+                return
+              const start = horizontal ? rect.x : rect.y
+              const end = start + (horizontal ? rect.width : rect.height)
+              for (const p of [start - clearance - span / 2 - 1, end + clearance + span / 2 + 1])
+                if (p >= low && p <= high) samples.add(p)
+            }
+            nodes.forEach((n) => boundary(n, NODE_CLEARANCE))
+            for (const s of [...reservedSegments, ...pathSegments.filter((s) => s !== segment)])
+              boundary(
+                {
+                  x: Math.min(s.a.x, s.b.x),
+                  y: Math.min(s.a.y, s.b.y),
+                  width: Math.abs(s.b.x - s.a.x),
+                  height: Math.abs(s.b.y - s.a.y),
+                },
+                LABEL_CLEARANCE,
+              )
+          }
           for (const coordinate of samples) {
             const center = horizontal
               ? { x: coordinate, y: segment.a.y }

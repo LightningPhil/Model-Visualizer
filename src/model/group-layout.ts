@@ -96,19 +96,42 @@ export async function planGrouped(
   direction: 'RIGHT' | 'DOWN',
 ): Promise<LayoutPlan> {
   const stages = stageGraphs(graph)
-  const plans: { stage: ModelGraph; plan: LayoutPlan }[] = []
-  for (const stage of stages) plans.push({ stage, plan: await planLayout(A, stage, direction) })
-  const maxWidth = Math.max(...plans.map((p) => p.plan.routing.bounds.width)) + 440
-  const maxHeight = Math.max(...plans.map((p) => p.plan.routing.bounds.height)) + 440
+  const plans: { stage: ModelGraph; positions: Positions; bounds: Rect }[] = []
+  const templates = new Map<string, { positions: { x: number; y: number }[]; bounds: Rect }>()
+  for (const stage of stages) {
+    const indices = new Map(stage.nodes.map((n, i) => [n.id, i]))
+    // Equal fixed-size topologies can share placement work across layers. Routes
+    // and ports are still recomputed for every instance in the merged graph.
+    const key = JSON.stringify([
+      stage.nodes.length,
+      stage.edges.map((e) => [indices.get(e.source), indices.get(e.target), e.label, e.kind]),
+    ])
+    let template = templates.get(key)
+    if (!template) {
+      const plan = await planLayout(A, stage, direction)
+      template = {
+        positions: stage.nodes.map((n) => plan.positions[n.id]),
+        bounds: plan.routing.bounds,
+      }
+      templates.set(key, template)
+    }
+    plans.push({
+      stage,
+      positions: Object.fromEntries(stage.nodes.map((n, i) => [n.id, template!.positions[i]])),
+      bounds: template.bounds,
+    })
+  }
+  const maxWidth = Math.max(...plans.map((p) => p.bounds.width)) + 440
+  const maxHeight = Math.max(...plans.map((p) => p.bounds.height)) + 440
   const columns = direction === 'RIGHT' ? 3 : 2
   const positions: Positions = {}
-  plans.forEach(({ stage, plan }, i) => {
+  plans.forEach(({ stage, positions: local, bounds }, i) => {
     const row = Math.floor(i / columns),
       column = row % 2 ? columns - 1 - (i % columns) : i % columns
-    const dx = column * maxWidth + 220 - plan.routing.bounds.x,
-      dy = row * maxHeight + 220 - plan.routing.bounds.y
+    const dx = column * maxWidth + 220 - bounds.x,
+      dy = row * maxHeight + 220 - bounds.y
     for (const node of stage.nodes)
-      positions[node.id] = { x: plan.positions[node.id].x + dx, y: plan.positions[node.id].y + dy }
+      positions[node.id] = { x: local[node.id].x + dx, y: local[node.id].y + dy }
   })
   const routing = routeGrouped(A, graph, positions, direction)
   const problems = routingProblems(graph, positions, routing)

@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { parseDocument } from '../../src/model/schema'
+import { expandWholeModel } from '../../src/model/whole-model'
 
 const starter = JSON.parse(
   readFileSync(
@@ -18,6 +20,7 @@ const names = [
   'N-gram memory',
   'Multi-token prediction',
   'Generation & verification',
+  'Split attention heads',
 ]
 
 async function connectionsReady(page: Page, count: number) {
@@ -103,7 +106,12 @@ for (const [index, name] of names.entries())
     page.on('pageerror', (error) => errors.push(error.message))
     await page.goto('/')
     await page.locator('.nav-item').filter({ hasText: name }).click()
-    const count = starter.graphs[index].edges.length
+    const doc = parseDocument(starter)
+    const graph =
+      name === 'Split attention heads'
+        ? doc.graphs.find((g) => g.id === 'attention-heads')!
+        : doc.graphs[index]
+    const count = expandWholeModel(doc, graph).edges.length
     await connectionsReady(page, count)
     await page.getByRole('button', { name: 'Auto-layout', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Undo auto-layout' })).toBeEnabled({

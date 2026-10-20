@@ -49,7 +49,10 @@ Connections are explanations, not an executable autodifferentiation graph. Speci
 | ------------- | --------------------------------------------------------------------------- |
 | `B`           | Batch size; fixed to 1 in the current workbench                             |
 | `T`           | Current query positions: prompt length for prefill, 1 for decode            |
-| `S`           | Visible key positions: prompt length for prefill, prefix + 1 for decode     |
+| `S`           | Absolute processed extent: prompt length for prefill, prefix + 1 for decode |
+| `R`           | Retained cache positions after this call                                    |
+| `P`           | Retained prefix positions before this call (can be zero)                    |
+| `U`           | Working key slots: P + T                                                    |
 | `D`           | Hidden/residual width                                                       |
 | `L`           | Number of decoder layers                                                    |
 | `Hq`          | Query heads                                                                 |
@@ -89,7 +92,7 @@ The authored `whole-model` graph contains one `model-expansion` component with t
 
 This graph's saved `layout.positions` refer to its **expanded instance IDs**, which semantic validation checks against the compiler output. The source document retains only templates, the recipe, and saved positions; it never stores a second copy of the generated graph. Expanded views have separate limits of 4,096 components and 12,000 connections. The ordinary authored-graph limits remain unchanged. Unknown kinds continue to render generically unless they explicitly opt into the reserved expansion extension.
 
-Very large maps can save viewport zooms down to `0.001`. This widens the accepted v1 viewport range without changing the meaning of existing files. Existing compatible workspaces gain the new authored generation graph and recipe while preserving their IDs, notes, metadata and saved study positions. Changes to layer/head counts keep surviving instance positions and remove obsolete IDs; an incomplete map is then laid out as a whole.
+Very large maps can save viewport zooms down to `0.001`. This widens the accepted v1 viewport range without changing the meaning of existing files. Existing compatible workspaces gain the new authored generation graph and recipe while preserving their IDs, notes, metadata and saved study positions. Changes to layer/head counts archive each derived view’s geometry by configuration. Revisiting a configuration restores its saved layout; a new topology receives an automatic arrangement. See the attention/cache contract for the versioned layout extension.
 
 Unknown standard fields are rejected rather than silently dropped. Put additional metadata in `extensions`. This protects agent-authored content from disappearing during a round-trip.
 
@@ -105,3 +108,7 @@ Unknown standard fields are rejected rather than silently dropped. Put additiona
 8. Export/import the file to verify that all explanations, references, layouts and metadata survive.
 
 When extending the contract, update the runtime schema, generated JSON Schema, parser, examples, docs and tests together. Never quietly reinterpret existing fields. Version breaking changes and provide a deterministic migration that preserves layouts and notes.
+
+### Attention and cache additions
+
+Optional `config.kvCache` selects full, sliding-window or fixed-anchor sparse retention; omission preserves existing full semantics. The named P and R axes may be zero for an empty cache; all other dimension results remain positive. Split-head and whole-model variant recipes preserve independent layouts using compiled IDs. See [the complete definitions, examples, migration behavior and primary sources](attention-and-cache.md). Omission preserves full-prefix semantics. Earlier bundled workspaces receive a version-marked migration of cache axes and transient paths while retaining IDs, notes, geometry and extension metadata. Unknown extension versions are preserved.

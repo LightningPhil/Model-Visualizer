@@ -64,7 +64,7 @@ Expressions use a small arithmetic parser, never `eval`. The v1 teaching profile
 
 Prefill uses `T = S = prompt token count`. Decode describes a hypothetical next token: `T = 1`, `S = prompt token count + 1`. It does not sample or fabricate that token. Empty prompts use an explicitly labelled one-position reference shape. Attention labs are synthetic, capped at eight positions and labelled separately from full graph dimensions.
 
-The logical dense KV size is `2 × L × B × Hkv × S × Dh × scalarBytes`, with `B = 1` in this version. The cache lab can vary S independently to study scaling. It excludes allocator overhead, padding, sharding and quantization metadata. State width in bytes is not a numerical quantization implementation.
+The full-prefix logical KV size is `2 × L × B × Hkv × S × Dh × scalarBytes`, with `B = 1` in this version. The cache lab can vary S independently to study scaling. It excludes allocator overhead, padding, sharding and quantization metadata. State width in bytes is not a numerical quantization implementation.
 
 ## Extension boundaries
 
@@ -72,7 +72,7 @@ The logical dense KV size is `2 × L × B × Hkv × S × Dh × scalarBytes`, wit
 
 **Tokenizer:** implement `TokenizerAdapter` to return IDs, byte spans and optional merge steps. Add an explicit adapter registry/capability description before supporting multiple executable tokenizers. Imported unknown adapter IDs currently retain graph inspection using reference shapes and disable token labs. Do not silently fall back to the demo tokenizer.
 
-**Attention architecture:** MHA/GQA/MQA use the same dense logical state representation. MLA requires a new cache representation and configuration profile, not relabelled GQA. Windowed/sparse/linear attention similarly needs explicit mask/state semantics. Version the document contract when necessary.
+**Attention architecture:** MHA/GQA/MQA use the same dense logical state representation. MLA requires a new cache representation and configuration profile, not relabelled GQA. Full, fixed-anchor sparse and sliding-window policies now have explicit masks, absolute positions and retention accounting in `attention.ts`. Other sparse/linear patterns still require their own state semantics. See [attention and cache](attention-and-cache.md).
 
 **Actual traces:** the new graphical execution adapter and frame types establish a renderer-neutral playback boundary, with provenance and stable component IDs. Only illustrative execution is currently implemented. A numerical/measured adapter still needs a validated external trace schema keyed by document/model hash, layer, head, step and tensor name, with dtype, positions and sampling/downsampling metadata. Keep large arrays out of layout files. Never replace synthetic examples silently with inferred data.
 
@@ -83,3 +83,7 @@ The logical dense KV size is `2 × L × B × Hkv × S × Dh × scalarBytes`, wit
 ## Verification
 
 Core tests exercise format integrity, rejected references/expressions, all authored LaTeX, Unicode BPE round-trips, causal row normalization and KV byte scaling. Layout tests check every example in both directions, deterministic restoration, narrow label gutters, obstructed paths, fan-out/fan-in, residuals, cycles, self-loops and collision-free dragging. Browser tests sample the actual rounded SVG curves against rendered node/label boxes for every graph in both directions, and check full-diagram fitting and layout undo. Existing interaction, import/export, theme and responsive checks remain. Visual captures supplement these behavioral checks; they are not pixel snapshots.
+
+## Split heads and cache policy
+
+`heads.ts` compiles an opt-in head recipe from the authored attention template, exposing independent Q/score/mask/softmax/value paths with shared K/V groups. The whole-model split variant references the existing base recipe and saves its layout separately. `attention.ts` owns head mapping, visibility, retained absolute positions, working/persistent counts and synthetic masked probabilities. The graphical trace records per-layer position maps and evictions; speculative writes pin their checkpoint until verification commits. See [the semantics and primary sources](attention-and-cache.md).

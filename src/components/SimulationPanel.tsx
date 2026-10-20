@@ -13,6 +13,8 @@ import type { ModelConfig } from '../model/schema'
 import type { Packet } from '../model/simulation'
 import type { SimulationController } from './useSimulation'
 import { formatBytes } from '../model/schema'
+import { cachePolicyLabel, type CachePolicy } from '../model/attention'
+import { CachePolicyControls } from './CachePolicyControls'
 
 export function PacketGlyph({ packet }: { packet: Packet }) {
   return (
@@ -73,11 +75,13 @@ export function SimulationPanel({
   config,
   ready,
   onClose,
+  onCachePolicy,
 }: {
   sim: SimulationController
   config: ModelConfig
   ready: boolean
   onClose: () => void
+  onCachePolicy: (policy: CachePolicy) => void
 }) {
   const { frame, options } = sim
   const change = (changes: Partial<typeof options>) => sim.setOptions({ ...options, ...changes })
@@ -104,6 +108,7 @@ export function SimulationPanel({
               {options.promptTokens} in · {options.newTokens} out · {options.mtp ? 'MTP' : 'AR'}
             </span>
           </summary>
+          <CachePolicyControls config={config} onChange={onCachePolicy} />
           <div className="simulation-mode segmented">
             <button aria-pressed={!options.mtp} onClick={() => change({ mtp: false })}>
               Autoregressive
@@ -291,36 +296,48 @@ export function SimulationPanel({
                 KV STATE <span>{frame?.tentative ? 'TENTATIVE WRITES' : 'REUSABLE PREFIX'}</span>
               </h3>
               <p>
-                Two tensors per layer · [B, Hkv, S, Dh]
+                {cachePolicyLabel(config)} · two tensors per layer · [B, Hkv, R, Dh]
                 <br />
-                Each marked cell represents a sequence position shared across that layer’s KV heads.
+                Cells identify retained absolute positions. K/V vectors are distinct for each KV
+                head. Trial positions remain pinned until verification commits.
               </p>
               <div className="cache-layer-list">
-                {frame?.cacheLengths.map((length, layer) => (
+                {frame?.cachePositions.map((positions, layer) => (
                   <div key={layer} className={frame.layer === layer ? 'active-cache-layer' : ''}>
                     <code>L{layer}</code>
                     <span className="cache-position-strip">
-                      {Array.from({ length: Math.min(48, length) }, (_, s) => (
+                      {positions.slice(0, 48).map((s) => (
                         <i
                           key={s}
+                          data-sequence-position={s}
+                          title={`Absolute position ${s}`}
                           className={s >= frame.contextLength ? 'tentative-position' : ''}
-                        />
+                        >
+                          {s}
+                        </i>
                       ))}
                     </span>
-                    <b>{length}</b>
+                    <b>{positions.length}</b>
                   </div>
                 ))}
               </div>
               <code>
                 {formatBytes(
                   2 *
-                    (frame?.cacheLengths.reduce((a, b) => a + b, 0) ?? 0) *
+                    (frame?.cachePositions.reduce((a, b) => a + b.length, 0) ?? 0) *
                     config.nKvHeads *
                     config.headDim *
                     config.dtypeBytes,
                 )}{' '}
                 logical K + V
               </code>
+              {frame?.evictedPositions.some((p) => p.length > 0) && (
+                <p className="cache-evictions" data-testid="cache-evictions">
+                  Evicted absolute positions:{' '}
+                  {[...new Set(frame.evictedPositions.flat())].join(', ')}. Their slots can be
+                  reused.
+                </p>
+              )}
             </section>
           </>
         )}

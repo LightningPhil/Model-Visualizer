@@ -1752,6 +1752,7 @@ h1 {
 }
 .cache-lab {
   display: flex;
+  flex-wrap: wrap;
   gap: 25px;
   padding-bottom: 15px;
 }
@@ -3657,6 +3658,152 @@ h1 {
   background: var(--violet);
   opacity: 0.65;
   border-radius: 1px;
+}
+
+.cache-policy-controls {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+.cache-policy-controls label {
+  display: grid;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.cache-policy-controls select,
+.cache-policy-controls input {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+.cache-policy-controls input {
+  width: 72px;
+}
+.cache-policy-controls p {
+  flex-basis: 100%;
+  font-size: 10px;
+  line-height: 1.6;
+  margin: 0;
+  color: var(--muted);
+}
+.cache-policy-shortcut,
+.head-detail-button {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--cyan);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 10px;
+}
+.cache-policy-shortcut {
+  margin-top: 12px;
+}
+.head-detail-button[aria-pressed='true'] {
+  border-color: var(--cyan);
+}
+.retention-map {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  min-width: 0;
+}
+.retention-map > div:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+.retention-map small,
+.retention-map p {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.7;
+}
+.retention-cells {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 12px;
+}
+.retention-cells > span {
+  width: 27px;
+  display: grid;
+  text-align: center;
+  padding: 5px 0;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  font: 9px var(--mono);
+  color: var(--muted);
+}
+.retention-cells > span[data-retained='true'] {
+  border-style: solid;
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: var(--cyan-bg);
+}
+.retention-cells b {
+  font-size: 10px;
+  margin-bottom: 3px;
+}
+.ring-example code {
+  display: inline-block;
+  border: 1px solid var(--border);
+  padding: 2px 5px;
+  margin: 3px;
+  color: var(--violet);
+}
+.simulation-cache .cache-position-strip {
+  flex-wrap: wrap;
+  height: auto;
+  min-height: 18px;
+}
+.simulation-cache .cache-position-strip i {
+  width: 15px;
+  max-width: 15px;
+  flex: none;
+  height: 17px;
+  text-align: center;
+  font: normal 7px/17px var(--mono);
+  color: var(--bg);
+}
+.retention-map {
+  flex-basis: 100%;
+}
+.cache-lab,
+.attention-lab {
+  max-height: min(48vh, 500px);
+  overflow: auto;
+}
+.cache-lab .cache-visual {
+  display: block;
+  flex: 1;
+  min-width: 200px;
+  width: auto;
+  max-width: 100%;
+}
+.cache-lab .cache-visual svg {
+  height: 160px;
+}
+.cache-lab .retention-map {
+  border-top: 0;
+  padding-top: 0;
+}
+.cache-lab .cache-copy {
+  flex: 1;
+}
+.graph-toolbar {
+  flex-wrap: wrap;
+}
+.cache-evictions {
+  border-left: 2px solid var(--amber);
+  padding-left: 8px;
 }
 .cache-position-strip .tentative-position {
   background: repeating-linear-gradient(

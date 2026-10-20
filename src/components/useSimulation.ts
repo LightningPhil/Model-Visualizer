@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ModelConfig } from '../model/schema'
 import { graphicalAdapter, nextFrame, type SimulationOptions } from '../model/simulation'
 
-export function useSimulation(config: ModelConfig, enabled: boolean) {
+export function useSimulation(config: ModelConfig, enabled: boolean, splitHeads = false) {
   const [options, setOptions] = useState<SimulationOptions>({
     promptTokens: 6,
     newTokens: 8,
@@ -17,14 +17,14 @@ export function useSimulation(config: ModelConfig, enabled: boolean) {
   const result = useMemo(() => {
     if (!enabled) return { trace: null, error: '' }
     try {
-      return { trace: graphicalAdapter.run(config, options), error: '' }
+      return { trace: graphicalAdapter.run(config, { ...options, splitHeads }), error: '' }
     } catch (error) {
       return {
         trace: null,
         error: error instanceof Error ? error.message : 'Simulation unavailable.',
       }
     }
-  }, [config, options, enabled])
+  }, [config, options, enabled, splitHeads])
   const trace = result.trace
   const cursor = Math.min(index, (trace?.frames.length ?? 1) - 1)
   const frame = trace?.frames[cursor]

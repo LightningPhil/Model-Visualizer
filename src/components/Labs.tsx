@@ -8,13 +8,18 @@ import {
   Fingerprint,
   Info,
 } from 'lucide-react'
-import {
-  attentionWeights,
-  demoTokenLabel,
-  demoTokenizer,
-  type Tokenization,
-} from '../model/tokenizer'
+import { demoTokenLabel, demoTokenizer, type Tokenization } from '../model/tokenizer'
 import { cacheBytes, formatBytes, type ModelConfig } from '../model/schema'
+import {
+  canAttend,
+  cachePolicy,
+  maskedAttentionWeights,
+  kvHeadFor,
+  residentCount,
+  residentPositionAt,
+  type CachePolicy,
+} from '../model/attention'
+import { CachePolicyControls } from './CachePolicyControls'
 
 type Shared = {
   encoded: Tokenization
@@ -24,6 +29,9 @@ type Shared = {
   decode?: boolean
   layer?: number
   onLayer?: (layer: number) => void
+  onCachePolicy: (policy: CachePolicy) => void
+  onHead?: (head: number) => void
+  head?: number
 }
 
 export function TokenizerLab({ encoded, selectedToken, onToken }: Shared) {
@@ -105,13 +113,19 @@ export function TokenizerLab({ encoded, selectedToken, onToken }: Shared) {
   )
 }
 
-export function AttentionLab({ encoded, config, decode = false }: Shared) {
-  const [head, setHead] = useState(0)
+export function AttentionLab({
+  encoded,
+  config,
+  decode = false,
+  onCachePolicy,
+  onHead,
+  head = 0,
+}: Shared) {
   const [cell, setCell] = useState<[number, number]>([0, 0])
   const actualHead = Math.min(head, config.nQueryHeads - 1)
   const count = Math.min(encoded.tokens.length + (decode ? 1 : 0), 8)
-  const weights = attentionWeights(count, actualHead)
-  const kv = Math.floor(actualHead / (config.nQueryHeads / config.nKvHeads))
+  const weights = maskedAttentionWeights(config, count, actualHead)
+  const kv = kvHeadFor(config, actualHead)
   const row = decode ? count - 1 : Math.min(cell[0], count - 1)
   const col = Math.min(cell[1], count - 1)
   return (
@@ -126,7 +140,13 @@ export function AttentionLab({ encoded, config, decode = false }: Shared) {
         </p>
         <div className="head-picker" aria-label="Query head">
           {Array.from({ length: config.nQueryHeads }, (_, h) => (
-            <button key={h} aria-pressed={h === actualHead} onClick={() => setHead(h)}>
+            <button
+              key={h}
+              aria-pressed={h === actualHead}
+              onClick={() => {
+                onHead?.(h)
+              }}
+            >
               Q{h}
             </button>
           ))}
@@ -143,6 +163,7 @@ export function AttentionLab({ encoded, config, decode = false }: Shared) {
           <Info size={12} />
           Synthetic probabilities · no trained weights
         </div>
+        <CachePolicyControls config={config} onChange={onCachePolicy} />
       </div>
       <div className="heatmap-wrap">
         <span className="heatmap-axis">KEY POSITION →</span>
@@ -164,10 +185,10 @@ export function AttentionLab({ encoded, config, decode = false }: Shared) {
                   {values.map((weight, c) => (
                     <button
                       key={c}
-                      aria-label={`Query ${r}, key ${c}: ${c > r ? 'masked' : `${(weight * 100).toFixed(1)} percent`}`}
-                      className={`heat-cell ${c > r ? 'masked-cell' : ''} ${row === r && col === c ? 'active-cell' : ''}`}
+                      aria-label={`Query ${r}, key ${c}: ${!canAttend(config, r, c) ? 'masked' : `${(weight * 100).toFixed(1)} percent`}`}
+                      className={`heat-cell ${!canAttend(config, r, c) ? 'masked-cell' : ''} ${row === r && col === c ? 'active-cell' : ''}`}
                       style={
-                        c <= r
+                        canAttend(config, r, c)
                           ? {
                               backgroundColor: `color-mix(in srgb, var(--cyan) ${Math.round(8 + weight * 92)}%, var(--heat-base))`,
                             }
@@ -175,12 +196,14 @@ export function AttentionLab({ encoded, config, decode = false }: Shared) {
                       }
                       onClick={() => setCell([r, c])}
                       title={
-                        c > r
-                          ? 'Future position: masked'
+                        !canAttend(config, r, c)
+                          ? c > r
+                            ? 'Future position: masked'
+                            : 'Excluded by retention/attention policy'
                           : `Q${actualHead} · (${r},${c}) = ${weight.toFixed(4)}`
                       }
                     >
-                      {c > r ? '×' : ''}
+                      {!canAttend(config, r, c) ? '×' : ''}
                     </button>
                   ))}
                 </div>
@@ -190,7 +213,9 @@ export function AttentionLab({ encoded, config, decode = false }: Shared) {
         <div className="heatmap-detail">
           q<sub>{row}</sub> → k<sub>{col}</sub>
           <strong>
-            {col > row ? 'masked' : `${((weights[row]?.[col] ?? 0) * 100).toFixed(1)}%`}
+            {!canAttend(config, row, col)
+              ? 'masked'
+              : `${((weights[row]?.[col] ?? 0) * 100).toFixed(1)}%`}
           </strong>
           <div className="heat-gradient" />
           <span>0 → 1</span>
@@ -211,6 +236,7 @@ export function CacheLab({
   decode = false,
   layer = 0,
   onLayer = () => {},
+  onCachePolicy,
 }: Shared) {
   const [head, setHead] = useState(0)
   const [type, setType] = useState<'K' | 'V'>('K')
@@ -221,11 +247,17 @@ export function CacheLab({
     sequence ?? encoded.tokens.length + (decode ? 1 : 0),
     config.contextLength,
   )
+  const resident = residentCount(config, length)
+  const policy = cachePolicy(config)
+  const sample = Array.from({ length: Math.min(32, length) }, (_, i) =>
+    length <= 32 ? i : Math.floor((i * (length - 1)) / 31),
+  )
   return (
     <div className="lab-content cache-lab">
       <div className="cache-copy">
         <span className="eyebrow">STATE EXPLORER</span>
         <h3>A tensor. Five meaningful axes.</h3>
+        <CachePolicyControls config={config} onChange={onCachePolicy} />
         <div className="cache-controls">
           <label>
             Layer ℓ
@@ -264,7 +296,7 @@ export function CacheLab({
           </div>
         </div>
         <label className="sequence-slider">
-          Cached positions <strong>{length.toLocaleString()}</strong>
+          Processed sequence <strong>{length.toLocaleString()}</strong>
           <input
             aria-label="Cached sequence length"
             type="range"
@@ -279,14 +311,64 @@ export function CacheLab({
           <span>logical K + V · all layers · B = 1</span>
         </div>
         <small className="muted">
-          At capacity: {formatBytes(cacheBytes(config, config.contextLength))} · metadata excluded
+          {resident.toLocaleString()} resident / {length.toLocaleString()} processed positions · At
+          capacity: {formatBytes(cacheBytes(config, config.contextLength))} · metadata excluded
         </small>
       </div>
       <div className="cache-visual">
+        <section className="retention-map" aria-label="Retained absolute positions">
+          <div>
+            <span className="eyebrow">ABSOLUTE POSITION MAP</span>
+            <small>
+              ● retained · × evicted / not retained{length > 32 ? ' · sampled indices' : ''}
+            </small>
+          </div>
+          <div className="retention-cells">
+            {sample.map((position) => {
+              const retained = canAttend(config, length - 1, position)
+              return (
+                <span
+                  key={position}
+                  data-position={position}
+                  data-retained={retained}
+                  title={`Absolute position ${position}: ${retained ? 'retained' : 'not retained'}`}
+                >
+                  <b>{retained ? '●' : '×'}</b>
+                  {position}
+                </span>
+              )
+            })}
+          </div>
+          <p>
+            Sequence extent S = {length}; resident keys R = {resident}. K and V use the same
+            position map, separately for every layer and KV head. RoPE uses absolute positions.
+          </p>
+          {policy.mode === 'sliding-window' && (
+            <p className="ring-example">
+              Optional ring-buffer implementation:{' '}
+              {Array.from({ length: Math.min(8, resident) }, (_, i) =>
+                residentPositionAt(config, length, resident - Math.min(8, resident) + i),
+              ).map((position) => (
+                <code key={position}>
+                  pos {position} → slot {position % policy.windowSize}
+                </code>
+              ))}
+              . Slots wrap; position IDs do not. This is a storage example, separate from the
+              attention mask.
+            </p>
+          )}
+          {policy.mode === 'sparse' && (
+            <p>
+              Fixed anchors ∪ recent window, without duplicates. Sparse attention does not
+              automatically reduce persistent storage: this policy explicitly evicts every
+              non-anchor outside the window. Position-map metadata is excluded from the byte total.
+            </p>
+          )}
+        </section>
         <svg
           viewBox="0 0 400 220"
           role="img"
-          aria-label={`${type} cache logical slice, layer ${actualLayer}, batch 0, KV head ${actualHead}, ${length} sequence positions by ${config.headDim} features`}
+          aria-label={`${type} cache logical slice, layer ${actualLayer}, batch 0, KV head ${actualHead}, ${resident} resident positions by ${config.headDim} features`}
         >
           <defs>
             <linearGradient id="plane" x1="0" y1="0" x2="1" y2="1">
@@ -347,7 +429,7 @@ export function CacheLab({
           />
           <path d="M117 180h222m-222-3v6m222-6v6" stroke="var(--muted)" />
           <text x="228" y="200" textAnchor="middle">
-            S = {length.toLocaleString()} positions →
+            R = {resident.toLocaleString()} resident positions →
           </text>
           <text x="57" y="137" transform="rotate(49 57 137)" textAnchor="middle">
             Dh = {config.headDim}
@@ -364,7 +446,7 @@ export function CacheLab({
             ['L', config.nLayers],
             ['B', 1],
             ['Hkv', config.nKvHeads],
-            ['S', length],
+            ['R', resident],
             ['Dh', config.headDim],
           ].map(([axis, value]) => (
             <span key={axis}>

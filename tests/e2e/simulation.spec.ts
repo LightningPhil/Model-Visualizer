@@ -20,7 +20,7 @@ async function openSimulation(page: Page) {
     timeout: 60000,
   })
   await expect(page.locator('.model-node')).toHaveCount(252)
-  await expect(page.locator('.routed-connection')).toHaveCount(346)
+  await expect(page.locator('.routed-connection')).toHaveCount(358)
 }
 
 test('whole model exposes every layer and supports full-map fit, jump, inspection and reload', async ({
@@ -34,7 +34,7 @@ test('whole model exposes every layer and supports full-map fit, jump, inspectio
     .getByRole('button', { name: 'Whole model Every layer on one canvas', exact: true })
     .click()
   await expect(page.locator('.model-node')).toHaveCount(252)
-  await expect(page.locator('.routed-connection')).toHaveCount(346, { timeout: 60000 })
+  await expect(page.locator('.routed-connection')).toHaveCount(358, { timeout: 60000 })
   await expect(page.locator('.routing-message')).toHaveCount(0)
   await page.getByRole('button', { name: 'Fit graph', exact: true }).click()
   await expect
@@ -68,7 +68,7 @@ test('whole model exposes every layer and supports full-map fit, jump, inspectio
   ).toBeVisible()
   await page.getByRole('button', { name: 'Search components' }).click()
   await page.getByLabel('Search model components').fill('L5 · Query head 7')
-  await page.locator('.search-results > button').click()
+  await page.getByRole('button', { name: /^L5 · Query head 7 Whole model · Q7/ }).click()
   await expect(page.getByRole('heading', { name: 'L5 · Query head 7', exact: true })).toBeVisible()
   await expect(page.locator('.katex-error')).toHaveCount(0)
   await expect
@@ -84,7 +84,7 @@ test('whole model exposes every layer and supports full-map fit, jump, inspectio
     )
     .toBe(252)
   await page.reload()
-  await expect(page.locator('.routed-connection')).toHaveCount(346, { timeout: 60000 })
+  await expect(page.locator('.routed-connection')).toHaveCount(358, { timeout: 60000 })
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Every layer. Every connection.')
   expect(errors).toEqual([])
 })

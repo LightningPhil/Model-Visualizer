@@ -26,13 +26,13 @@ The browser tests launch their own Vite server on port 5200. Set `PLAYWRIGHT_PRE
 
 ## Explore
 
-- **Whole model:** one expanded canvas with 252 components and 346 connections in the default teaching configuration. Every main decoder layer, query-head result and KV-head slice appears explicitly, alongside tokenization, feed-forward paths, output and the generation loop. Jump between stages, zoom, drag, auto-layout and save the complete map.
+- **Whole model:** one expanded canvas with 252 components and 358 connections in the default teaching configuration. Every main decoder layer, query-head result and KV-head slice appears explicitly, alongside tokenization, feed-forward paths, output and the generation loop. Jump between stages, zoom, drag, auto-layout and save the complete map.
 - **Graphical simulation:** abstract packets flow through the model with play/pause, reversible steps, a timeline and camera follow. Switch ordinary decoding or two MTP depths; see proposals, causal verification, accepted prefixes, rejected suffixes, KV rollback and committed output. Text input is not required.
-- **Ten study views:** the original architecture, tokenizer, transformer block, attention, KV cache, feed-forward, output, n-gram memory and MTP views, plus generation and verification.
-- **77 authored components:** graph templates and an expansion recipe supply explanations, tensor dimensions, LaTeX and primary sources. Click an edge label to inspect its operation.
+- **Eleven study views:** the original architecture, tokenizer, transformer block, attention, KV cache, feed-forward, output, n-gram memory and MTP views, plus generation/verification and fully split attention heads.
+- **79 authored components:** graph templates and an expansion recipe supply explanations, tensor dimensions, LaTeX and primary sources. Click an edge label to inspect its operation.
 - **Real teaching BPE:** edit the prompt; see UTF-8 bytes, token IDs and every ranked merge. Unicode round-trips losslessly.
-- **Attention:** switch MHA/GQA/MQA; inspect query-to-KV-head sharing and a causal heatmap. Prefill and decode use different query and key lengths.
-- **KV cache:** select a layer, head, K/V plane and sequence length. A dimensioned tensor-slice visualization shows the logical axes. Byte counts follow the selected sharing and storage width.
+- **Attention:** split every query head into its own Q → scores → mask → softmax → value path. Switch MHA/GQA/MQA and inspect correct KV sharing. The split whole-model variant has 420 components and 610 connections, with its own saved layout.
+- **KV cache:** choose full, sparse (fixed anchors + recent positions), or sliding-window retention. Inspect retained/evicted absolute positions, per-head slices, working versus persistent state, ring-buffer examples and policy-aware bytes. Simulation preserves checkpoints during MTP verification and rollback.
 - **Layouts:** drag nodes, pan/zoom, fit, or auto-layout horizontally/vertically. ELK compares complete arrangements; libavoid routes orthogonal connections around nodes and labels, with distinct ports and clean straight runs through annotations. Undo restores the previous layout. Every graph remembers its positions and viewport.
 - **Portable workspaces:** automatic browser-local saves, editable notebook, and readable JSON import/export. Invalid imports leave the current workspace intact.
 - **Appearance:** dark and light themes, cyan/violet/amber accents, category text and different legend shapes. No red/green status distinction.
@@ -45,7 +45,7 @@ The bundled **Transformer foundations** document is a teaching architecture: six
 
 The tokenizer executes an explicit, small byte-BPE vocabulary. Tensor dimensions and logical KV bytes are calculated. Attention heatmaps are deterministic synthetic examples. The graphical simulator uses abstract packets and scripted reference choices; it does **not** compute logits, execute trained weights or generate language. Its renderer-neutral execution trace keeps numerical/local-model adapters possible without coupling them to the canvas. The n-gram path is an illustrative, inactive extension in the simulator. The MTP study view explains auxiliary training; generation and verification are shown separately.
 
-MLA, MoE, sparse/windowed attention, arbitrary tokenizer plugins and real activation traces are researched extension points, not completed inference features. The [research map](docs/research.md) distinguishes their semantics and the work needed to add them.
+MLA, MoE, more advanced sparse patterns, arbitrary tokenizer plugins and real activation traces are researched extension points, not completed inference features. The [research map](docs/research.md) distinguishes their semantics and the work needed to add them.
 
 ## Model documents and future development
 
@@ -55,6 +55,7 @@ The authored source of truth is [`examples/transformer-foundations.model.json`](
 - [Research map, component taxonomy and primary references](docs/research.md)
 - [Software architecture and extension boundaries](docs/architecture.md)
 - [Graphical execution and future numerical adapters](docs/simulation.md)
+- [Independent attention heads and KV retention policies](docs/attention-and-cache.md)
 - [Machine-readable JSON Schema](examples/model.schema.json)
 - [Repository instructions for future agents](AGENTS.md)
 

@@ -15,7 +15,10 @@
     "vocabSize": 393,
     "contextLength": 2048,
     "dtypeBytes": 2,
-    "attention": "GQA"
+    "attention": "GQA",
+    "kvCache": {
+      "mode": "full"
+    }
   },
   "tokenizer": {
     "adapter": "byte-bpe-demo-v1",
@@ -93,6 +96,18 @@
       "title": "Fast Inference from Transformers via Speculative Decoding",
       "url": "https://proceedings.mlr.press/v202/leviathan23a.html",
       "note": "Draft / verify / accept-prefix inference. The simulator implements greedy verification, not the paper’s stochastic probability-ratio rule; it makes no speedup claim."
+    },
+    {
+      "id": "mistral",
+      "title": "Mistral 7B — sliding-window attention and rolling buffer cache",
+      "url": "https://arxiv.org/abs/2310.06825",
+      "note": "Primary account of local causal attention, chunked prefill and a rolling KV buffer. Window conventions are explicit in this workbench."
+    },
+    {
+      "id": "sparse",
+      "title": "Generating Long Sequences with Sparse Transformers",
+      "url": "https://arxiv.org/abs/1904.10509",
+      "note": "Primary work on structured sparse attention. The fixed absolute anchors plus recent window here are an explicitly illustrative policy, not a reproduction of the paper’s factorized patterns."
     }
   ],
   "graphs": [
@@ -897,36 +912,36 @@
           "id": "cachek",
           "kind": "cachek",
           "title": "Key cache",
-          "subtitle": "Append along sequence axis",
+          "subtitle": "Retain positions under the cache policy",
           "category": "memory",
-          "description": "Persist rotated keys for this layer. Prior keys are reused; they are not recomputed for every generated token.",
+          "description": "Persist rotated keys for this layer. Prior keys are reused; they are not recomputed for every generated token. Full retains the prefix; sliding window retains the latest W positions; sparse retains fixed absolute anchors and a recent window. R counts resident positions; their absolute position IDs remain separate. Cache reads use the prior snapshot; current-call K/V also remain available transiently for all causal queries.",
           "tensors": [
             {
               "name": "K prefix",
-              "shape": ["B", "Hkv", "S", "Dh"],
+              "shape": ["B", "Hkv", "R", "Dh"],
               "role": "state"
             }
           ],
           "notes": [],
-          "sourceIds": [],
+          "sourceIds": ["attention", "gqa", "mistral", "sparse"],
           "childGraph": "cache"
         },
         {
           "id": "cachev",
           "kind": "cachev",
           "title": "Value cache",
-          "subtitle": "Append along sequence axis",
+          "subtitle": "Retain positions under the cache policy",
           "category": "memory",
-          "description": "Persist values independently from keys, with the same layer, batch, head and sequence indexing.",
+          "description": "Persist values independently from keys, with the same layer, batch, head and sequence indexing. Full retains the prefix; sliding window retains the latest W positions; sparse retains fixed absolute anchors and a recent window. R counts resident positions; their absolute position IDs remain separate. Cache reads use the prior snapshot; current-call K/V also remain available transiently for all causal queries.",
           "tensors": [
             {
               "name": "V prefix",
-              "shape": ["B", "Hkv", "S", "Dh"],
+              "shape": ["B", "Hkv", "R", "Dh"],
               "role": "state"
             }
           ],
           "notes": [],
-          "sourceIds": [],
+          "sourceIds": ["attention", "gqa", "mistral", "sparse"],
           "childGraph": "cache"
         },
         {
@@ -935,7 +950,7 @@
           "title": "Q · Kᵀ",
           "subtitle": "Pairwise query–key dot products",
           "category": "compute",
-          "description": "For each query head, select its KV group and contract over Dh. The result has a query-position axis and a key-position axis.",
+          "description": "For each query head, select its KV group and contract over Dh. The result has a query-position axis and a key-position axis. U working key slots gather the pre-update retained prefix plus current-call keys. Use their absolute position IDs for masking; an inference kernel need not materialize all scores.",
           "equation": "R_{b,h,t,s}=\\sum_{j=1}^{d_h}Q_{b,h,t,j}K_{b,g(h),s,j}",
           "tensors": [
             {
@@ -945,12 +960,12 @@
             },
             {
               "name": "K shared",
-              "shape": ["B", "Hkv", "S", "Dh"],
+              "shape": ["B", "Hkv", "U", "Dh"],
               "role": "input"
             },
             {
               "name": "scores",
-              "shape": ["B", "Hq", "T", "S"],
+              "shape": ["B", "Hq", "T", "U"],
               "role": "output"
             }
           ],
@@ -960,20 +975,20 @@
         {
           "id": "scale",
           "kind": "scale",
-          "title": "Scale + causal mask",
-          "subtitle": "Divide by √Dh · mask the future",
+          "title": "Scale + attention mask",
+          "subtitle": "Causal visibility · full / window / sparse",
           "category": "compute",
-          "description": "Scale the dot products, then add negative infinity wherever the key position is in the future. Decode uses absolute positions, not a naïve T×S triangular mask starting at zero.",
-          "equation": "\\tilde{R}=R/\\sqrt{d_h}+M,\\quad M_{t,s}=\\begin{cases}0&s\\le p_t\\\\-\\infty&s>p_t\\end{cases}",
+          "description": "Divide by √Dh, then mask every disallowed absolute query/key pair. Full: 0 ≤ k ≤ q. Sliding: max(0,q−W+1) ≤ k ≤ q (W includes the current position). Sparse teaching policy: k ≤ q and (k mod stride = 0 or k > q−W). These are architectural masks; kernels can avoid computing masked pairs. Slot u has absolute position p_u; do not confuse a compact cache index with that position.",
+          "equation": "\\widetilde Z=Z/\\sqrt{d_h}+M,\\quad M_{q,k}=\\begin{cases}0&k\\in\\mathcal V(q)\\\\-\\infty&\\text{otherwise}\\end{cases}",
           "tensors": [
             {
               "name": "masked scores",
-              "shape": ["B", "Hq", "T", "S"],
+              "shape": ["B", "Hq", "T", "U"],
               "role": "output"
             }
           ],
           "notes": [],
-          "sourceIds": ["attention"]
+          "sourceIds": ["attention", "mistral", "sparse"]
         },
         {
           "id": "softmax",
@@ -986,7 +1001,7 @@
           "tensors": [
             {
               "name": "A",
-              "shape": ["B", "Hq", "T", "S"],
+              "shape": ["B", "Hq", "T", "U"],
               "role": "output"
             }
           ],
@@ -1004,12 +1019,12 @@
           "tensors": [
             {
               "name": "A",
-              "shape": ["B", "Hq", "T", "S"],
+              "shape": ["B", "Hq", "T", "U"],
               "role": "input"
             },
             {
               "name": "V",
-              "shape": ["B", "Hkv", "S", "Dh"],
+              "shape": ["B", "Hkv", "U", "Dh"],
               "role": "input"
             },
             {
@@ -1122,7 +1137,7 @@
           "target": "cachek",
           "label": "append K",
           "operation": "Append the new rotated keys along S.",
-          "shape": ["B", "Hkv", "S", "Dh"],
+          "shape": ["B", "Hkv", "R", "Dh"],
           "description": "Append the new rotated keys along S.",
           "kind": "state"
         },
@@ -1132,7 +1147,7 @@
           "target": "cachev",
           "label": "append V",
           "operation": "Append new values along S.",
-          "shape": ["B", "Hkv", "S", "Dh"],
+          "shape": ["B", "Hkv", "R", "Dh"],
           "description": "Append new values along S.",
           "kind": "state"
         },
@@ -1142,8 +1157,8 @@
           "target": "scores",
           "label": "dot product",
           "operation": "Contract Q and K over the feature axis Dh.",
-          "equation": "[T,d_h]\\,[d_h,S]\\to[T,S]",
-          "shape": ["B", "Hq", "T", "S"],
+          "equation": "[T,d_h]\\,[d_h,U]\\to[T,U]",
+          "shape": ["B", "Hq", "T", "U"],
           "description": "Contract Q and K over the feature axis Dh.",
           "kind": "flow"
         },
@@ -1152,9 +1167,9 @@
           "source": "cachek",
           "target": "scores",
           "label": "K transpose",
-          "operation": "Select a shared KV head and transpose its sequence and feature axes.",
-          "shape": ["B", "Hkv", "S", "Dh"],
-          "description": "Select a shared KV head and transpose its sequence and feature axes.",
+          "operation": "Select a shared KV head and transpose its sequence and feature axes. Read the pre-update retained prefix snapshot; combine it with this call’s new K/V. P counts prior resident slots.",
+          "shape": ["B", "Hkv", "P", "Dh"],
+          "description": "Select a shared KV head and transpose its sequence and feature axes. Read the pre-update retained prefix snapshot; combine it with this call’s new K/V. P counts prior resident slots.",
           "kind": "flow"
         },
         {
@@ -1163,7 +1178,7 @@
           "target": "scale",
           "label": "÷ √Dh",
           "operation": "Scale logits before softmax.",
-          "shape": ["B", "Hq", "T", "S"],
+          "shape": ["B", "Hq", "T", "U"],
           "description": "Scale logits before softmax.",
           "kind": "flow"
         },
@@ -1173,7 +1188,7 @@
           "target": "softmax",
           "label": "softmax",
           "operation": "Normalize over S, excluding masked future positions.",
-          "shape": ["B", "Hq", "T", "S"],
+          "shape": ["B", "Hq", "T", "U"],
           "description": "Normalize over S, excluding masked future positions.",
           "kind": "flow"
         },
@@ -1183,7 +1198,7 @@
           "target": "weighted",
           "label": "weighted sum",
           "operation": "Multiply attention probabilities by value features.",
-          "equation": "[T,S]\\,[S,d_h]\\to[T,d_h]",
+          "equation": "[T,U]\\,[U,d_h]\\to[T,d_h]",
           "shape": ["B", "Hq", "T", "Dh"],
           "description": "Multiply attention probabilities by value features.",
           "kind": "flow"
@@ -1193,9 +1208,9 @@
           "source": "cachev",
           "target": "weighted",
           "label": "read V",
-          "operation": "Reuse the cached values for the current layer.",
-          "shape": ["B", "Hkv", "S", "Dh"],
-          "description": "Reuse the cached values for the current layer.",
+          "operation": "Reuse the cached values for the current layer. Read the pre-update retained prefix snapshot; combine it with this call’s new K/V. P counts prior resident slots.",
+          "shape": ["B", "Hkv", "P", "Dh"],
+          "description": "Reuse the cached values for the current layer. Read the pre-update retained prefix snapshot; combine it with this call’s new K/V. P counts prior resident slots.",
           "kind": "state"
         },
         {
@@ -1216,6 +1231,26 @@
           "operation": "Mix head outputs with the learned output projection.",
           "shape": ["B", "T", "D"],
           "description": "Mix head outputs with the learned output projection.",
+          "kind": "flow"
+        },
+        {
+          "id": "ropek--scores-current",
+          "source": "ropek",
+          "target": "scores",
+          "label": "current-call K",
+          "operation": "Combine retained prefix K/V with this call’s transient new positions before policy masking.",
+          "description": "These new vectors remain available to every causally eligible query in this call, even when early positions will be evicted from persistent state at the end. Cache writes and reads refer to distinct temporal snapshots.",
+          "shape": ["B", "Hkv", "T", "Dh"],
+          "kind": "flow"
+        },
+        {
+          "id": "v--weighted-current",
+          "source": "v",
+          "target": "weighted",
+          "label": "current-call V",
+          "operation": "Combine retained prefix K/V with this call’s transient new positions before policy masking.",
+          "description": "These new vectors remain available to every causally eligible query in this call, even when early positions will be evicted from persistent state at the end. Cache writes and reads refer to distinct temporal snapshots.",
+          "shape": ["B", "Hkv", "T", "Dh"],
           "kind": "flow"
         }
       ],
@@ -1287,17 +1322,17 @@
           "title": "Persistent K tensor",
           "subtitle": "Write only the current layer slice",
           "category": "memory",
-          "description": "Append keys at the correct sequence positions. The logical all-layer view has axes L, B, Hkv, S, Dh; implementations often store separate tensors per layer.",
+          "description": "Append keys at the correct sequence positions. The logical all-layer view has axes L, B, Hkv, R, Dh; implementations often store separate tensors per layer. Resident axis R stores retained positions with an absolute-position map. Full keeps all processed keys; sliding keeps the latest W including the current position; sparse keeps fixed-stride absolute anchors plus a recent window. New query-batch keys also remain transiently available before final retention.",
           "equation": "K^{(\\ell)}_{:,:,s,:}\\leftarrow k_s^{(\\ell)}",
           "tensors": [
             {
               "name": "K all layers",
-              "shape": ["L", "B", "Hkv", "S", "Dh"],
+              "shape": ["L", "B", "Hkv", "R", "Dh"],
               "role": "state"
             }
           ],
           "notes": [],
-          "sourceIds": ["gqa"]
+          "sourceIds": ["gqa", "attention", "mistral", "sparse"]
         },
         {
           "id": "values",
@@ -1305,16 +1340,16 @@
           "title": "Persistent V tensor",
           "subtitle": "A distinct allocation from K",
           "category": "memory",
-          "description": "Store values with the same logical indexing as keys. The K/V selector is not an extra attention head.",
+          "description": "Store values with the same logical indexing as keys. The K/V selector is not an extra attention head. Resident axis R stores retained positions with an absolute-position map. Full keeps all processed keys; sliding keeps the latest W including the current position; sparse keeps fixed-stride absolute anchors plus a recent window. New query-batch keys also remain transiently available before final retention.",
           "tensors": [
             {
               "name": "V all layers",
-              "shape": ["L", "B", "Hkv", "S", "Dh"],
+              "shape": ["L", "B", "Hkv", "R", "Dh"],
               "role": "state"
             }
           ],
           "notes": [],
-          "sourceIds": []
+          "sourceIds": ["attention", "mistral", "sparse"]
         },
         {
           "id": "read",
@@ -1322,11 +1357,11 @@
           "title": "Attend to the prefix",
           "subtitle": "Read this layer’s K and V",
           "category": "compute",
-          "description": "A query reads visible positions from its assigned KV head. Query heads never share state across decoder layers.",
+          "description": "A query reads visible positions from its assigned KV head. Query heads never share state across decoder layers. Resident axis R stores retained positions with an absolute-position map. Full keeps all processed keys; sliding keeps the latest W including the current position; sparse keeps fixed-stride absolute anchors plus a recent window. New query-batch keys also remain transiently available before final retention.",
           "tensors": [
             {
               "name": "K slice, V slice",
-              "shape": ["B", "Hkv", "S", "Dh"],
+              "shape": ["B", "Hkv", "U", "Dh"],
               "role": "input"
             },
             {
@@ -1336,11 +1371,11 @@
             }
           ],
           "notes": [
-            "Logical dense cache bytes = 2 × L × B × Hkv × S × Dh × bytes per scalar. Allocator overhead and quantization metadata are excluded.",
+            "Resident logical cache bytes = 2 × L × B × Hkv × R × Dh × bytes per scalar. Allocator overhead and quantization metadata are excluded.",
             "PagedAttention changes physical memory management, not the meaning of these logical axes.",
             "MLA requires a different state schema: compressed latent vectors plus positional key state, rather than this full K/V representation."
           ],
-          "sourceIds": ["paged", "deepseek"]
+          "sourceIds": ["paged", "deepseek", "attention", "mistral", "sparse"]
         }
       ],
       "edges": [
@@ -1370,7 +1405,7 @@
           "target": "keys",
           "label": "append",
           "operation": "Write K to this layer’s state slice.",
-          "shape": ["L", "B", "Hkv", "S", "Dh"],
+          "shape": ["L", "B", "Hkv", "R", "Dh"],
           "description": "Write K to this layer’s state slice.",
           "kind": "state"
         },
@@ -1380,7 +1415,7 @@
           "target": "values",
           "label": "append",
           "operation": "Write V to this layer’s state slice.",
-          "shape": ["L", "B", "Hkv", "S", "Dh"],
+          "shape": ["L", "B", "Hkv", "R", "Dh"],
           "description": "Write V to this layer’s state slice.",
           "kind": "state"
         },
@@ -1389,9 +1424,9 @@
           "source": "keys",
           "target": "read",
           "label": "read keys",
-          "operation": "Read only the current layer and visible positions.",
-          "shape": ["B", "Hkv", "S", "Dh"],
-          "description": "Read only the current layer and visible positions.",
+          "operation": "Read only the current layer and visible positions. Read the pre-update snapshot (P retained prefix slots) and merge with the current batch. Persist final retained state only after queries finish.",
+          "shape": ["B", "Hkv", "P", "Dh"],
+          "description": "Read only the current layer and visible positions. Read the pre-update snapshot (P retained prefix slots) and merge with the current batch. Persist final retained state only after queries finish.",
           "kind": "state"
         },
         {
@@ -1399,10 +1434,30 @@
           "source": "values",
           "target": "read",
           "label": "read values",
-          "operation": "Read values for the selected KV head.",
-          "shape": ["B", "Hkv", "S", "Dh"],
-          "description": "Read values for the selected KV head.",
+          "operation": "Read values for the selected KV head. Read the pre-update snapshot (P retained prefix slots) and merge with the current batch. Persist final retained state only after queries finish.",
+          "shape": ["B", "Hkv", "P", "Dh"],
+          "description": "Read values for the selected KV head. Read the pre-update snapshot (P retained prefix slots) and merge with the current batch. Persist final retained state only after queries finish.",
           "kind": "state"
+        },
+        {
+          "id": "newk--read-current",
+          "source": "newk",
+          "target": "read",
+          "label": "current-call K",
+          "operation": "Transient K/V from the current batch are also available before final retention.",
+          "description": "Working keys U = P + T include retained prefix and current positions. Mask by absolute positions before softmax; final cache retention can be smaller than a prefill or verification batch.",
+          "shape": ["B", "Hkv", "T", "Dh"],
+          "kind": "flow"
+        },
+        {
+          "id": "newv--read-current",
+          "source": "newv",
+          "target": "read",
+          "label": "current-call V",
+          "operation": "Transient K/V from the current batch are also available before final retention.",
+          "description": "Working keys U = P + T include retained prefix and current positions. Mask by absolute positions before softmax; final cache retention can be smaller than a prefill or verification batch.",
+          "shape": ["B", "Hkv", "T", "Dh"],
+          "kind": "flow"
         }
       ],
       "layout": {
@@ -2704,6 +2759,67 @@
         "direction": "RIGHT",
         "positions": {}
       }
+    },
+    {
+      "id": "attention-heads",
+      "title": "Attention. Every head, independently.",
+      "subtitle": "Independent queries and softmax · shared K/V by group",
+      "description": "Split mathematical paths for every query head. Batched projections feed head slices, dot products, policy masks, softmax and value contractions, then concatenate in head order. Working keys include retained prefix state plus the current query batch; their absolute positions determine visibility.",
+      "nodes": [
+        {
+          "id": "heads-recipe",
+          "kind": "attention-expansion",
+          "title": "Split attention heads",
+          "subtitle": "A recipe referencing the authored study graphs",
+          "category": "compute",
+          "description": "Instantiate head operations from the authored attention template.",
+          "tensors": [],
+          "notes": [],
+          "sourceIds": ["attention", "gqa", "mistral", "sparse"],
+          "extensions": {
+            "model-visualizer.heads": {
+              "version": 1,
+              "graph": "attention"
+            }
+          }
+        }
+      ],
+      "edges": [],
+      "layout": {
+        "direction": "RIGHT",
+        "positions": {}
+      }
+    },
+    {
+      "id": "whole-model-heads",
+      "title": "Every layer. Every head. Every operation.",
+      "subtitle": "The complete model with attention paths split by head.",
+      "description": "A variant of the authored whole-model recipe using the split-head attention template in every main layer. Layouts are independent of the batched whole-model map.",
+      "nodes": [
+        {
+          "id": "whole-heads-recipe",
+          "kind": "model-expansion",
+          "title": "Whole model with split heads",
+          "subtitle": "A recipe referencing the authored study graphs",
+          "category": "compute",
+          "description": "The renderer expands this recipe into stable component instances. Saved positions refer to those generated instance IDs. Authored explanations and graph templates remain the only source of model content.",
+          "tensors": [],
+          "notes": [],
+          "sourceIds": ["attention", "deepseek", "speculative"],
+          "extensions": {
+            "model-visualizer.expansion": {
+              "version": 1,
+              "baseGraph": "whole-model",
+              "attentionGraph": "attention-heads"
+            }
+          }
+        }
+      ],
+      "edges": [],
+      "layout": {
+        "direction": "RIGHT",
+        "positions": {}
+      }
     }
   ],
   "ui": {
@@ -2711,5 +2827,8 @@
     "theme": "dark",
     "prompt": "The future is beautifully complex.",
     "notes": "My architecture notes\n\nClick a component or connection to inspect it. Drag nodes to arrange your own view. Export JSON to share the complete model and its layouts."
+  },
+  "extensions": {
+    "model-visualizer.cache-policy-version": 1
   }
 }

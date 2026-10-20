@@ -90,6 +90,58 @@
         "attention": {
           "type": "string",
           "enum": ["MHA", "GQA", "MQA"]
+        },
+        "kvCache": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "const": "full"
+                }
+              },
+              "required": ["mode"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "const": "sliding-window"
+                },
+                "windowSize": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1048576
+                }
+              },
+              "required": ["mode", "windowSize"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "const": "sparse"
+                },
+                "windowSize": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1048576
+                },
+                "stride": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 1048576
+                }
+              },
+              "required": ["mode", "windowSize", "stride"],
+              "additionalProperties": false
+            }
+          ]
         }
       },
       "required": [

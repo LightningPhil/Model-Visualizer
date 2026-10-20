@@ -24,7 +24,7 @@ describe('whole-model composition', () => {
     old.ui.notes = 'Preserve my research.'
     old.graphs[0].layout.positions.decoder = { x: 900, y: 450 }
     const upgraded = addWholeModelView(old, doc)
-    expect(upgraded.graphs).toHaveLength(11)
+    expect(upgraded.graphs).toHaveLength(13)
     expect(upgraded.graphs.slice(0, 9)).toEqual(old.graphs)
     expect(upgraded.ui.notes).toBe(old.ui.notes)
     expect(upgraded.extensions).toEqual(old.extensions)
@@ -69,11 +69,15 @@ describe('whole-model composition', () => {
       graph.edges.some((e) => e.source === 'generation.feedback' && e.target === 'tokens.ids'),
     ).toBe(true)
   })
-  for (const direction of ['RIGHT', 'DOWN'] as const)
-    it(`arranges and routes the complete expanded model ${direction}`, async () => {
-      await AvoidLib.load()
-      const graph = expandWholeModel(doc, recipe)
-      const plan = await planLayout(AvoidLib.getInstance(), graph, direction)
-      expect(routingProblems(graph, plan.positions, plan.routing)).toEqual([])
-    }, 120000)
+  for (const target of ['whole-model', 'whole-model-heads'])
+    for (const direction of ['RIGHT', 'DOWN'] as const)
+      it(`arranges and routes ${target} ${direction}`, async () => {
+        await AvoidLib.load()
+        const graph = expandWholeModel(
+          doc,
+          doc.graphs.find((g) => g.id === target)!,
+        )
+        const plan = await planLayout(AvoidLib.getInstance(), graph, direction)
+        expect(routingProblems(graph, plan.positions, plan.routing)).toEqual([])
+      }, 120000)
 })

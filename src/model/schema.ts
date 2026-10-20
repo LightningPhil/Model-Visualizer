@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { expandWholeModel } from './whole-model.ts'
+import { residentCount } from './attention.ts'
 
 const text = z.string().max(24000)
 const id = z
@@ -25,6 +26,20 @@ export const configSchema = z.strictObject({
   contextLength: z.number().int().min(32).max(1048576),
   dtypeBytes: z.union([z.literal(1), z.literal(2), z.literal(4)]),
   attention: z.enum(['MHA', 'GQA', 'MQA']),
+  kvCache: z
+    .discriminatedUnion('mode', [
+      z.strictObject({ mode: z.literal('full') }),
+      z.strictObject({
+        mode: z.literal('sliding-window'),
+        windowSize: z.number().int().min(1).max(1048576),
+      }),
+      z.strictObject({
+        mode: z.literal('sparse'),
+        windowSize: z.number().int().min(1).max(1048576),
+        stride: z.number().int().min(2).max(1048576),
+      }),
+    ])
+    .optional(),
 })
 
 const tensorSchema = z.strictObject({
@@ -156,7 +171,11 @@ export function resolveAxis(expression: string, symbols: Record<string, number>)
     return value
   }
   const value = sum()
-  if (cursor !== tokens.length || !Number.isSafeInteger(value) || value < 1)
+  if (
+    cursor !== tokens.length ||
+    !Number.isSafeInteger(value) ||
+    (value < 1 && !(value === 0 && ['P', 'R'].includes(expression.trim())))
+  )
     throw new Error(`Dimension must be a positive integer: ${expression}`)
   return value
 }
@@ -166,6 +185,9 @@ export function dimensions(config: ModelConfig, tokenCount = 12, decode = false)
     B: 1,
     T: decode ? 1 : tokenCount,
     S: tokenCount + (decode ? 1 : 0),
+    R: residentCount(config, tokenCount + (decode ? 1 : 0)),
+    P: residentCount(config, decode ? tokenCount : 0),
+    U: residentCount(config, decode ? tokenCount : 0) + (decode ? 1 : tokenCount),
     D: config.dModel,
     L: config.nLayers,
     Hq: config.nQueryHeads,
@@ -183,6 +205,13 @@ export function dimensions(config: ModelConfig, tokenCount = 12, decode = false)
 export function parseDocument(input: unknown): ModelDocument {
   const doc = documentSchema.parse(input)
   const c = doc.config
+  if (
+    c.kvCache &&
+    c.kvCache.mode !== 'full' &&
+    (c.kvCache.windowSize > c.contextLength ||
+      (c.kvCache.mode === 'sparse' && c.kvCache.stride > c.contextLength))
+  )
+    throw new Error('Cache window and sparse stride must not exceed the context capacity.')
   if (c.nQueryHeads % c.nKvHeads !== 0)
     throw new Error('Query heads must be divisible by KV heads.')
   if (c.dModel !== c.nQueryHeads * c.headDim)
@@ -242,7 +271,14 @@ export function shapeLabel(shape: string[], symbols: Record<string, number>, sym
 }
 
 export function cacheBytes(config: ModelConfig, sequenceLength: number) {
-  return 2 * config.nLayers * config.nKvHeads * sequenceLength * config.headDim * config.dtypeBytes
+  return (
+    2 *
+    config.nLayers *
+    config.nKvHeads *
+    residentCount(config, sequenceLength) *
+    config.headDim *
+    config.dtypeBytes
+  )
 }
 
 export function formatBytes(bytes: number) {

@@ -149,7 +149,7 @@ export function Inspector({
             {component?.repeat && <span className="quiet-badge">{symbols.L} layers</span>}
           </div>
           <h2>{title}</h2>
-          {['block', 'attention', 'feedforward', 'cache'].includes(graph.id) && (
+          {['block', 'attention', 'attention-heads', 'feedforward', 'cache'].includes(graph.id) && (
             <div className="layer-context">
               Layer ℓ = {layer} · independent parameters and state
             </div>
@@ -259,7 +259,10 @@ export function Inspector({
                 {Object.entries({
                   B: 'Batch size',
                   T: 'Current query positions',
-                  S: 'Visible key positions',
+                  S: 'Absolute sequence extent',
+                  R: 'Resident cache positions',
+                  P: 'Retained prefix before call',
+                  U: 'Working keys: prefix + new',
                   D: 'Hidden features',
                   Hq: 'Query heads',
                   Hkv: 'Key / value heads',

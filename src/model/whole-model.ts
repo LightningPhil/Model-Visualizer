@@ -1,4 +1,5 @@
 import type { Component, Connection, ModelDocument, ModelGraph } from './schema'
+import { expandHeads, isHeadsGraph } from './heads.ts'
 
 export const EXPANSION_KEY = 'model-visualizer.expansion'
 export const INSTANCE_KEY = 'model-visualizer.instance'
@@ -10,6 +11,8 @@ type Recipe = {
   output: Ref
   memory: Ref
   generation: Ref
+  baseGraph?: string
+  attentionGraph?: string
 }
 export type Instance = {
   stage: string
@@ -37,8 +40,31 @@ export function expandWholeModel(
   doc: Pick<ModelDocument, 'graphs' | 'config'>,
   recipeGraph: ModelGraph,
 ): ModelGraph {
+  if (isHeadsGraph(recipeGraph)) return expandHeads(doc, recipeGraph)
   if (!isWholeModel(recipeGraph)) return recipeGraph
-  const recipe = recipeGraph.nodes[0].extensions?.[EXPANSION_KEY] as Recipe | undefined
+  let recipe = recipeGraph.nodes[0].extensions?.[EXPANSION_KEY] as Recipe | undefined
+  if (recipe?.baseGraph) {
+    if (recipe.version !== 1) throw new Error('Unsupported whole-model variant version.')
+    const base = doc.graphs.find((g) => g.id === recipe!.baseGraph)
+    const baseRecipe = base?.nodes[0]?.extensions?.[EXPANSION_KEY] as Recipe | undefined
+    if (
+      !base ||
+      !isWholeModel(base) ||
+      !baseRecipe ||
+      baseRecipe.baseGraph ||
+      !recipe.attentionGraph
+    )
+      throw new Error('Invalid or recursive whole-model variant.')
+    recipe = {
+      ...baseRecipe,
+      layers: {
+        ...baseRecipe.layers,
+        expand: baseRecipe.layers.expand.map((e) =>
+          e.node === 'attn' ? { ...e, graph: recipe!.attentionGraph! } : e,
+        ),
+      },
+    }
+  }
   if (
     !recipe ||
     recipe.version !== 1 ||
@@ -55,7 +81,7 @@ export function expandWholeModel(
   const refGraph = (id: string) => {
     const g = doc.graphs.find((g) => g.id === id)
     if (!g || isWholeModel(g)) throw new Error(`Expansion template is missing or recursive: ${id}`)
-    return g
+    return expandHeads(doc, g)
   }
   const layerSize =
     refGraph(recipe.layers.graph).nodes.length -
@@ -156,6 +182,9 @@ export function expandWholeModel(
           ...weighted,
           id,
           kind: 'attention-head',
+          childGraph: doc.graphs.some((g) => g.id === 'attention-heads')
+            ? 'attention-heads'
+            : undefined,
           title: `L${layer} · Query head ${head}`,
           subtitle: `Q${head} → K${kv} / V${kv} · head result`,
           description: `Head ${head} uses KV head ${kv}. This node exposes the per-head slice of the batched attention result; it does not apply attention a second time. Each layer has its own weights and state.`,
@@ -190,9 +219,9 @@ export function expandWholeModel(
           ...cache,
           id,
           title: `L${layer} · ${plane} head ${head}`,
-          subtitle: `Layer ${layer} · KV head ${head} · [B, S, Dh]`,
-          description: `A logical head slice of the ${plane} cache at decoder layer ${layer}. The complete logical state has axes [L, B, Hkv, S, Dh]. A slice is a view, not a second allocation. Physical storage and paging are implementation choices.`,
-          tensors: [{ name: `${plane} slice`, role: 'state', shape: ['B', 'S', 'Dh'] }],
+          subtitle: `Layer ${layer} · KV head ${head} · [B, R, Dh]`,
+          description: `A logical head slice of the ${plane} cache at decoder layer ${layer}. The complete resident state has axes [L, B, Hkv, R, Dh], plus an absolute-position map. R follows the full, sparse or sliding-window retention policy. A slice is a view, not a second allocation. Physical storage and paging are implementation choices.`,
+          tensors: [{ name: `${plane} slice`, role: 'state', shape: ['B', 'R', 'Dh'] }],
           extensions: {
             [INSTANCE_KEY]: {
               stage,
@@ -203,8 +232,8 @@ export function expandWholeModel(
             } satisfies Instance,
           },
         })
-        link(cache.id, id, `view ${plane}${head}`, 'state', ['B', 'S', 'Dh'])
-        link(id, target, `read ${plane}${head}`, 'state')
+        link(cache.id, id, `view ${plane}${head}`, 'state', ['B', 'R', 'Dh'])
+        link(id, target, `read ${plane}${head}`, 'state', ['B', 'P', 'Dh'])
       }
     }
     previous = block.exit
@@ -234,6 +263,31 @@ export function expandWholeModel(
 /** Opt existing compatible workspaces into the new authored recipe without
  * replacing their content, notes, metadata or any saved study layout. */
 export function addWholeModelView(doc: ModelDocument, reference: ModelDocument): ModelDocument {
+  // Add new opt-in study/variant recipes without replacing any authored graph,
+  // notes, extensions or saved positions in an existing workspace.
+  if (doc.graphs.some(isWholeModel)) {
+    const extras = reference.graphs.filter(
+      (g) =>
+        ['attention-heads', 'whole-model-heads'].includes(g.id) &&
+        !doc.graphs.some((old) => old.id === g.id),
+    )
+    if (!extras.length || doc.graphs.length + extras.length > 30) return doc
+    const candidate = {
+      ...doc,
+      graphs: [...doc.graphs, ...structuredClone(extras)],
+      sources: [
+        ...doc.sources,
+        ...reference.sources.filter((s) => !doc.sources.some((old) => old.id === s.id)),
+      ],
+    }
+    if (candidate.sources.length > 100) return doc
+    try {
+      for (const g of extras) expandWholeModel(candidate, g)
+      return candidate
+    } catch {
+      return doc
+    }
+  }
   const recipe = reference.graphs.find(isWholeModel)
   if (!recipe || doc.graphs.some(isWholeModel) || doc.graphs.some((g) => g.id === recipe.id))
     return doc
@@ -256,7 +310,7 @@ export function addWholeModelView(doc: ModelDocument, reference: ModelDocument):
   if (candidate.graphs.length > 30 || candidate.sources.length > 100) return doc
   try {
     expandWholeModel(candidate, recipe)
-    return candidate
+    return addWholeModelView(candidate, reference)
   } catch {
     return doc
   }
