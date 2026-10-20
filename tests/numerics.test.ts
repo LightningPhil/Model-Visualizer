@@ -7,7 +7,14 @@ import {
   teachingConfig,
   type NumericalSettings,
 } from '../src/model/numerics/engine'
-import { makeTensor, matmul, rmsnorm, rope, softmax } from '../src/model/numerics/tensor'
+import {
+  makeTensor,
+  matmul,
+  rmsnorm,
+  rope,
+  softmax,
+  tensorComparisonIssue,
+} from '../src/model/numerics/tensor'
 import { explainCell, valueLabel } from '../src/model/numerics/explain'
 import { canAttend } from '../src/model/attention'
 import { numericalExampleFor, resolveNumericalExample } from '../src/model/numerics/examples'
@@ -72,6 +79,32 @@ describe('small reference tensor operations', () => {
   })
 })
 describe('numerical transformer traces', () => {
+  it('rejects masked-score deltas across changed visibility while allowing aligned probability changes', () => {
+    const full = executeTeachingModel(defaultNumericalSettings),
+      window = executeTeachingModel({
+        ...defaultNumericalSettings,
+        kvCache: { mode: 'sliding-window', windowSize: 2 },
+      })
+    const score = full.tensors['call0/l0/masked-0'],
+      changed = window.tensors[score.id]
+    expect(changed.shape).toEqual(score.shape)
+    expect(changed.positions).toEqual(score.positions)
+    expect(tensorComparisonIssue(changed, score)).toBe('visibility')
+    expect(
+      tensorComparisonIssue(
+        window.tensors['call0/l0/attention-0'],
+        full.tensors['call0/l0/attention-0'],
+      ),
+    ).toBeUndefined()
+    expect(
+      window.tensors['call0/l0/attention-0'].data[12] -
+        full.tensors['call0/l0/attention-0'].data[12],
+    ).toBeLessThan(0)
+    expect(tensorComparisonIssue(changed, changed)).toBeUndefined()
+    expect(
+      tensorComparisonIssue(window.tensors['call1/l0/state-k'], full.tensors['call1/l0/state-k']),
+    ).toBe('shape')
+  })
   it('inspects actual shared connection operands without mixing decoder calls or future tensors', () => {
     const trace = executeTeachingModel(defaultNumericalSettings),
       prediction = trace.frames.find((f) => f.call === 0 && f.nodeIds.includes('output.sample'))!

@@ -69,7 +69,7 @@ The head observatory and cell grid show absolute positions even when retained sl
 
 Edit input IDs, parameter seed, output budget, head sharing, retention, sampling and temperature in **Run setup**. The main model configuration is unchanged. A changed numerical setting resets playback and calculates a fresh trace.
 
-**Pin baseline** records the current experiment settings. After a change, **Δ baseline** compares corresponding cells. Subtraction is enabled only when shape and absolute position maps agree. Masked cells retain their exclusion pattern instead of displaying an undefined `−∞ − −∞`. A baseline is recomputed from its saved settings; it is not a second set of saved tensor arrays.
+**Pin baseline** records the current experiment settings. After a change, **Δ baseline** compares corresponding cells. Subtraction requires matching shapes, semantic axes, storage types and absolute positions. Masked-score tensors also require identical visibility patterns; when masks differ, compare the finite attention probabilities instead. Under identical masks, excluded cells retain their exclusion marker instead of displaying an undefined `−∞ − −∞`. A baseline is recomputed from its saved settings; it is not a second set of saved tensor arrays.
 
 Bookmark operations, annotate them, and keep a laboratory notebook. The versioned `model-visualizer.numerical-lab` document extension stores settings, the active layout, separate layouts for each head-sharing topology, bookmarks, notes and optional baseline settings. **Export model** includes this extension alongside the existing main layouts and notebook. **Open** and browser-local saves preserve it. Unknown versions or unsupported fields are retained, and the temporary laboratory session does not overwrite them.
 

@@ -1,6 +1,11 @@
 import { useMemo, useState } from 'react'
 import { ArrowDownUp, ChevronLeft, ChevronRight } from 'lucide-react'
-import { offset, unravel, type NumericTensor } from '../../model/numerics/tensor'
+import {
+  offset,
+  unravel,
+  tensorComparisonIssue,
+  type NumericTensor,
+} from '../../model/numerics/tensor'
 import { valueLabel } from '../../model/numerics/explain'
 
 export function TensorView({
@@ -16,9 +21,8 @@ export function TensorView({
 }) {
   const [transposed, setTransposed] = useState(false)
   const [delta, setDelta] = useState(false)
-  const compatible =
-    comparison?.shape.join() === tensor.shape.join() &&
-    JSON.stringify(comparison.positions) === JSON.stringify(tensor.positions)
+  const issue = comparison ? tensorComparisonIssue(tensor, comparison) : undefined,
+    compatible = Boolean(comparison && !issue)
   const rank = tensor.shape.length,
     indices = unravel(Math.min(index, Math.max(0, tensor.data.length - 1)), tensor.shape)
   const rowAxis = rank === 1 ? -1 : rank - (transposed ? 1 : 2),
@@ -208,8 +212,9 @@ export function TensorView({
           </div>
           {comparison && !compatible && (
             <p className="numeric-note">
-              Baseline has different axes or position IDs. Values are not subtracted across
-              incompatible slices.
+              {issue === 'visibility'
+                ? 'Baseline has a different visibility mask. Masked entries encode exclusion, so score deltas are not shown across different masks. Compare the attention probabilities instead.'
+                : 'Baseline has different shapes, axes, storage types or absolute position IDs. Values are not subtracted across incompatible slices.'}
             </p>
           )}
           {comparison && delta && compatible && (
@@ -217,6 +222,9 @@ export function TensorView({
               Grid values show current − baseline. The cell calculation below explains the current
               run. Selected: current {valueLabel(tensor.data[index], 7)}, baseline{' '}
               {valueLabel(comparison.data[index], 7)}.
+              {tensor.recipe.op === 'mask'
+                ? ' Excluded cells retain their mask marker; no subtraction is defined for them.'
+                : ''}
             </p>
           )}
         </>

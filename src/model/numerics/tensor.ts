@@ -46,6 +46,29 @@ export type NumericTensor = {
   createdAt: number
 }
 export const elements = (shape: number[]) => shape.reduce((a, b) => a * b, 1)
+/** Subtract only semantically aligned values. Infinities encode exclusion, so
+ * changed visibility must be compared through finite probabilities instead. */
+export function tensorComparisonIssue(current: NumericTensor, baseline: NumericTensor) {
+  if (current.shape.join() !== baseline.shape.join()) return 'shape'
+  if (current.axes.join() !== baseline.axes.join() || current.dtype !== baseline.dtype)
+    return 'axes'
+  if (
+    current.axes.some(
+      (axis) =>
+        JSON.stringify(current.positions?.[axis]) !== JSON.stringify(baseline.positions?.[axis]),
+    )
+  )
+    return 'positions'
+  if (current.recipe.op === 'mask' || baseline.recipe.op === 'mask') {
+    if (
+      current.recipe.op !== 'mask' ||
+      baseline.recipe.op !== 'mask' ||
+      current.recipe.allowed.join() !== baseline.recipe.allowed.join()
+    )
+      return 'visibility'
+  }
+  return undefined
+}
 /** Position IDs follow semantic axes, never a physical slot offset. */
 export function inheritPositions(result: NumericTensor, ...inputs: NumericTensor[]) {
   const positions: Record<string, number[]> = {}

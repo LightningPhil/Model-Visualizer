@@ -19,6 +19,29 @@ async function openLab(page: Page) {
   await expect(lab.locator('.routing-message')).toHaveCount(0)
   return lab
 }
+test('changed visibility blocks masked-score subtraction and compares finite attention probabilities', async ({
+  page,
+}) => {
+  test.setTimeout(90000)
+  const lab = await openLab(page),
+    baseline = executeTeachingModel(defaultNumericalSettings)
+  await lab.getByRole('button', { name: 'Pin baseline', exact: true }).click()
+  await lab.getByLabel('Open numerical run setup').click()
+  await lab.getByLabel('KV cache retention').selectOption('sliding-window')
+  await lab.getByLabel('KV window size').fill('2')
+  await lab.getByRole('button', { name: 'Explore the run' }).click()
+  await lab.getByRole('button', { name: 'Why is the future invisible?', exact: true }).click()
+  await expect(lab.getByRole('button', { name: 'Δ baseline', exact: true })).toBeDisabled()
+  await expect(lab.locator('.numeric-note')).toContainText('different visibility mask')
+  await lab
+    .getByRole('button', { name: 'Where does a probability come from?', exact: true })
+    .click()
+  await lab.getByRole('button', { name: 'Δ baseline', exact: true }).click()
+  await expect(lab.locator('[data-flat-index="12"]')).toHaveText(
+    valueLabel(-baseline.tensors['call0/l0/attention-0'].data[12], 3),
+  )
+  await expect(lab.locator('.tensor-view')).not.toContainText('NaN')
+})
 test('older stock explanations are clarified while custom prose and the notebook survive', async ({
   page,
 }) => {
