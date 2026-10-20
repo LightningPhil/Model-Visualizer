@@ -2,19 +2,21 @@
 
 ## Layers of responsibility
 
-| Location                         | Responsibility                                                                                                |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `examples/*.model.json`          | Authored model semantics, nested graph references, equations, sources, notes, positions and viewports         |
-| `src/model/schema.ts`            | Runtime schema, reference validation, restricted dimension parser, cache accounting and types                 |
-| `src/model/tokenizer.ts`         | Tokenizer adapter interface, real demonstration byte-BPE, labelled synthetic attention probabilities          |
-| `src/model/layout.ts`            | Lazy-loaded ELK layout with known node bounds                                                                 |
-| `src/model/storage.ts`           | Transactional import, export and browser-local persistence                                                    |
-| `src/components/GraphCanvas.tsx` | React Flow rendering, node dragging, edge inspection, layout and viewport controls                            |
-| `src/components/Inspector.tsx`   | Explanations, tensors, equations, primary references and notebook                                             |
-| `src/components/Labs.tsx`        | BPE trace, head sharing/heatmap, dimensioned KV slice, illustrative n-gram addresses and MTP target alignment |
-| `src/App.tsx`                    | Workspace state, navigation, configuration and document lifecycle                                             |
+| Location                                          | Responsibility                                                                                                |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `examples/*.model.json`                           | Authored model semantics, nested graph references, equations, sources, notes, positions and viewports         |
+| `src/model/schema.ts`                             | Runtime schema, reference validation, restricted dimension parser, cache accounting and types                 |
+| `src/model/tokenizer.ts`                          | Tokenizer adapter interface, real demonstration byte-BPE, labelled synthetic attention probabilities          |
+| `src/model/layout.ts`                             | ELK arrangements scored using the complete routed diagram                                                     |
+| `src/model/routing.ts`, `geometry.ts`             | Distinct ports, obstacle-aware libavoid routing, label placement, geometry checks and bounds                  |
+| `src/model/diagram.worker.ts`, `layout-client.ts` | Worker protocol, WASM initialization and coalescing of drag requests                                          |
+| `src/model/storage.ts`                            | Transactional import, export and browser-local persistence                                                    |
+| `src/components/GraphCanvas.tsx`                  | React Flow rendering, node dragging, edge inspection, layout and viewport controls                            |
+| `src/components/Inspector.tsx`                    | Explanations, tensors, equations, primary references and notebook                                             |
+| `src/components/Labs.tsx`                         | BPE trace, head sharing/heatmap, dimensioned KV slice, illustrative n-gram addresses and MTP target alignment |
+| `src/App.tsx`                                     | Workspace state, navigation, configuration and document lifecycle                                             |
 
-React Flow is the viewport/interaction layer; it does not own the portable document contract. ELK handles graph arrangement and loads only when needed. KaTeX renders untrusted equations with trust disabled and bounded expansion. Fonts are bundled, and the running app makes no inference or font-service requests.
+React Flow is the viewport/interaction layer; it does not own the portable document contract. ELK handles graph arrangement; libavoid handles orthogonal routing. Both execute outside the rendering thread. KaTeX renders untrusted equations with trust disabled and bounded expansion. Fonts and the routing WASM are bundled, and the running app makes no inference or font-service requests.
 
 ## Document lifecycle
 
@@ -30,9 +32,23 @@ Importing a document remounts graph state even if the document and graph IDs mat
 
 Each graph is a flat set of nodes and directed connections. A node's `childGraph` navigates to an independent detailed graph; `repeat` describes repeated blocks without drawing hundreds of copies. Each decoder layer has separate conceptual parameters/state. The selected layer is explicit in block/attention/feed-forward views and connected to the cache slice selector.
 
-Connections may represent flow, residual additions, state access or auxiliary paths. ELK can arrange branches and residual DAGs. Auxiliary links are excluded from the ranking calculation so optional studies do not force the main compute path into misleading extra stages. Edges remain rendered and inspectable. Cycles can be described, but time-step/state semantics must be explained explicitly; this is not a recurrent execution engine.
+Connections may represent flow, residual additions, state access or auxiliary paths. All links participate in placement and routing, including optional branches. Cycles can be described, but time-step/state semantics must be explained explicitly; this is not a recurrent execution engine.
 
-Default overview positions are hand composed. Auto-layout deliberately replaces positions and side overrides for the active graph, then fits the result. Manual dragging does not automatically re-layout the graph.
+Default overview positions are hand composed. Auto-layout deliberately replaces positions and side overrides for the active graph, then fits the complete result, including labels and exterior routes. The undo button restores the previous positions, direction, side overrides and viewport (up to ten automatic layouts while the graph stays open). Manual dragging reroutes connections without rearranging other nodes; dropping onto another node moves the dragged node to nearby free space.
+
+## Placement and routing
+
+1. ELK reserves space for every node, edge label and branch. Three deterministic candidates vary spacing and node placement. The completed diagrams are scored by crossings, bends, path length and area. A rejected candidate does not overwrite the user's layout.
+2. Every incident connection receives a separate port, ordered by the location of the connected component. Imported side overrides are honored until Auto-layout is requested.
+3. libavoid performs joint orthogonal routing around fixed-size component obstacles. Labels are placed on long straight segments, away from nodes, other labels and bends. In cramped manual layouts, an annotation can move into a free gutter with one perpendicular leader, leaving the connection straight.
+4. Labels become routing obstacles in a second transaction. An inline label has opposite entry/exit ports, so its connection runs straight through it. Other connections go around the label. The renderer rounds only right-angle corners; labels never create spline control points or a midpoint zigzag.
+5. Validate endpoint attachment, orthogonality, reversals, bends at labels, node/label collisions and annotation leaders before displaying a result. Overlapping or impossible imported geometry produces a visible request for more room rather than an obstructed route. Auto-layout remains available, and unsuccessful layout preserves the current arrangement.
+
+The worker coalesces drag updates and discards superseded results. Stale edges are withheld while moved geometry is being routed. React Flow handles are measured before their edges appear. The viewport fit uses route and label bounds as well as node bounds, with padding for canvas controls.
+
+Only authored positions, direction and viewport are persisted; routes and ports are deterministic derived geometry. No document-version change or duplicate routing data is required. Keep the fixed node/label sizes shared between CSS, geometry and tests when changing the design.
+
+The router uses [libavoid-js](https://github.com/Aksem/libavoid-js), the JavaScript/WASM port of [Adaptagrams libavoid](https://www.adaptagrams.org/documentation/libavoid.html), distributed under LGPL-2.1-or-later. The build ships its license, source/build links and a replaceable WASM asset; the application does not modify upstream source. See `public/THIRD_PARTY_NOTICES.txt`. ELK's [layered algorithm reference](https://eclipse.dev/elk/reference/algorithms/org-eclipse-elk-layered.html) documents its placement, ports and edge-label options.
 
 ## Shapes are descriptions, not execution
 
@@ -54,8 +70,8 @@ The logical dense KV size is `2 × L × B × Hkv × S × Dh × scalarBytes`, wit
 
 **MoE:** add router, scores, top-k selection, per-expert FFNs, dispatch/combine and optional shared experts. Distinguish total parameters from activated parameters. A static branching diagram alone is insufficient to demonstrate token-specific routing.
 
-**Editing:** an agent can author arbitrary graph bifurcations in JSON now. A general visual graph editor, port-aware validation, undo history and comparison of model versions are future work.
+**Editing:** an agent can author arbitrary graph bifurcations in JSON now. Layout undo is implemented. A general visual graph editor, tensor typing between ports, general editing history and comparison of model versions are future work.
 
 ## Verification
 
-Core tests exercise format integrity, rejected references/expressions, all authored LaTeX, Unicode BPE round-trips, causal row normalization, KV byte scaling and overlap-free ELK placement in both directions. Browser tests cover navigation, edge mathematics, head sharing, prefill/decode, dragging and restoration, import/export, failed imports, search, labs and narrow screens. Visual captures supplement these behavioral checks; they are not pixel snapshots.
+Core tests exercise format integrity, rejected references/expressions, all authored LaTeX, Unicode BPE round-trips, causal row normalization and KV byte scaling. Layout tests check every example in both directions, deterministic restoration, narrow label gutters, obstructed paths, fan-out/fan-in, residuals, cycles, self-loops and collision-free dragging. Browser tests sample the actual rounded SVG curves against rendered node/label boxes for every graph in both directions, and check full-diagram fitting and layout undo. Existing interaction, import/export, theme and responsive checks remain. Visual captures supplement these behavioral checks; they are not pixel snapshots.

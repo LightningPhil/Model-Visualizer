@@ -22,7 +22,7 @@ npm run test:e2e    # Chrome browser tests; needs an installed Chrome
 npm run schema     # regenerate the distributable JSON Schema
 ```
 
-The browser tests launch their own Vite server on port 5200. `npm run preview` serves the production build. CI installs Chromium and overrides the browser channel; see the workflow.
+The browser tests launch their own Vite server on port 5200. Set `PLAYWRIGHT_PREVIEW=1` to test the production build instead; build it first. `npm run preview` serves that build for manual inspection. CI installs Chromium and checks routing against both development and production servers; see the workflow.
 
 ## Explore
 
@@ -31,7 +31,7 @@ The browser tests launch their own Vite server on port 5200. `npm run preview` s
 - **Real teaching BPE:** edit the prompt; see UTF-8 bytes, token IDs and every ranked merge. Unicode round-trips losslessly.
 - **Attention:** switch MHA/GQA/MQA; inspect query-to-KV-head sharing and a causal heatmap. Prefill and decode use different query and key lengths.
 - **KV cache:** select a layer, head, K/V plane and sequence length. A dimensioned tensor-slice visualization shows the logical axes. Byte counts follow the selected sharing and storage width.
-- **Layouts:** drag nodes, pan/zoom, fit, or auto-layout horizontally/vertically with ELK. Every graph remembers its own positions and viewport.
+- **Layouts:** drag nodes, pan/zoom, fit, or auto-layout horizontally/vertically. ELK compares complete arrangements; libavoid routes orthogonal connections around nodes and labels, with distinct ports and clean straight runs through annotations. Undo restores the previous layout. Every graph remembers its positions and viewport.
 - **Portable workspaces:** automatic browser-local saves, editable notebook, and readable JSON import/export. Invalid imports leave the current workspace intact.
 - **Appearance:** dark and light themes, cyan/violet/amber accents, category text and different legend shapes. No red/green status distinction.
 

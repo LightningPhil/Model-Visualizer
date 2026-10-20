@@ -163,6 +163,7 @@ test('renders every graph in both themes without runtime errors', async ({ page 
   page.on('pageerror', (error) => errors.push(error.message))
   await expect(page.locator('.model-node')).toHaveCount(7)
   await page.evaluate(() => document.fonts.ready)
+  await expect(page.locator('.routed-connection')).toHaveCount(starter.graphs[0].edges.length)
   await page.screenshot({ path: 'docs/images/workbench-dark.png' })
   await page.getByRole('button', { name: 'Switch to light mode' }).click()
   await page.screenshot({ path: 'docs/images/workbench-light.png' })
@@ -177,9 +178,13 @@ test('renders every graph in both themes without runtime errors', async ({ page 
     'N-gram memory',
     'Multi-token prediction',
   ]
-  for (const name of names) {
+  for (const [index, name] of names.entries()) {
     await page.locator('.nav-item').filter({ hasText: name }).click()
     await expect(page.locator('.model-node').first()).toBeVisible()
+    await expect(page.locator('.routed-connection')).toHaveCount(
+      starter.graphs[index].edges.length,
+      { timeout: 15000 },
+    )
     await expect(page.locator('.katex-error')).toHaveCount(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1440)
   }
@@ -187,6 +192,7 @@ test('renders every graph in both themes without runtime errors', async ({ page 
   await page.locator('.nav-item').filter({ hasText: 'KV cache' }).click()
   await page.getByLabel('Cache layer').selectOption('3')
   await page.getByLabel('Cache KV head').selectOption('1')
+  await expect(page.locator('.routed-connection')).toHaveCount(starter.graphs[4].edges.length)
   await page.screenshot({ path: 'docs/images/kv-cache.png' })
   expect(errors).toEqual([])
 })

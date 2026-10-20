@@ -549,6 +549,20 @@ export default function App() {
             onViewport={(viewport) =>
               updateGraph(graph.id, (g) => ({ ...g, layout: { ...g.layout, viewport } }))
             }
+            onRestore={(snapshot) =>
+              updateGraph(graph.id, (g) => ({
+                ...g,
+                layout: snapshot.layout,
+                edges: g.edges.map((edge) => {
+                  const previous = snapshot.edges.find((e) => e.id === edge.id)
+                  return {
+                    ...edge,
+                    sourceSide: previous?.sourceSide,
+                    targetSide: previous?.targetSide,
+                  }
+                }),
+              }))
+            }
           />
         </div>
         {hasLab && tokenizerSupported && (

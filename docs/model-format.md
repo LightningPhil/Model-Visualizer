@@ -79,6 +79,8 @@ MHA requires `Hkv = Hq`; MQA requires `Hkv = 1`; the GQA option uses an intermed
 
 Positions are canvas-space coordinates; viewport translation and zoom are independent. Direction is `RIGHT` or `DOWN`. Missing positions trigger auto-layout for the graph. Keep stable node IDs to retain user layouts across content edits; add a migration when IDs change. A file's incomplete layout is recomputed as a whole when first opened.
 
+Routes, annotation bounds and per-connection ports are derived from the graph and saved positions; do not author or save a second set of bend points. Loading a complete layout preserves its node positions and reroutes the links. Auto-layout considers all connections (including auxiliary/state/residual paths), clears side overrides, and fits nodes, labels and outer tracks together. Its undo button restores the previous arrangement and viewport while the graph remains open. Leave space between imported components; impossible or overlapping geometry is reported visibly and can be repaired with Auto-layout.
+
 Model imports are limited to 3 MiB, 30 graphs, 250 nodes per graph and 800 connections per graph. The format is for architecture and documentation. Large activation tensors belong in a separate trace artifact.
 
 Unknown standard fields are rejected rather than silently dropped. Put additional metadata in `extensions`. This protects agent-authored content from disappearing during a round-trip.

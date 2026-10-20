@@ -1,0 +1,21 @@
+Model Visualizer includes libavoid-js 0.5.0-beta.5 and its libavoid WebAssembly
+routing engine, distributed under GNU LGPL version 2.1 or later.
+
+Upstream package and corresponding source/build instructions:
+https://github.com/Aksem/libavoid-js
+https://www.npmjs.com/package/libavoid-js/v/0.5.0-beta.5
+Underlying library and documentation:
+https://github.com/mjwybrow/adaptagrams/tree/master/cola/libavoid
+https://www.adaptagrams.org/documentation/libavoid.html
+
+The license is included at licenses/libavoid-LGPL-2.1.txt. The upstream library
+is unmodified. The WASM is emitted as a separate asset; to replace/rebuild the
+library, install the desired package/build in node_modules/libavoid-js and run
+npm run build. Application integration lives in src/model/avoid.ts and
+src/model/routing.ts, in the public Model-Visualizer repository.
+
+ELK / elkjs is distributed under EPL-2.0, with the secondary GPL option described
+in its source notices: https://github.com/kieler/elkjs. Its generated worker
+asset retains the upstream license header.
+
+The complete dependency versions are recorded in package-lock.json.
