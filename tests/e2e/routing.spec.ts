@@ -2,7 +2,7 @@ import { visibleGeometry } from './helpers/geometry'
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { parseDocument } from '../../src/model/schema'
-import { expandWholeModel } from '../../src/model/whole-model'
+import { expandWholeModel, instanceOf } from '../../src/model/whole-model'
 
 const starter = JSON.parse(
   readFileSync(
@@ -29,6 +29,106 @@ async function connectionsReady(page: Page, count: number) {
   await expect(page.locator('.edge-label')).toHaveCount(count)
   await expect(page.locator('.routing-message')).toHaveCount(0)
 }
+
+for (const id of ['whole-model', 'whole-model-heads'])
+  test(`${id}: auto-layout compacts widely separated sections in both directions`, async ({
+    page,
+  }) => {
+    test.setTimeout(180000)
+    const document = parseDocument(starter)
+    document.ui.activeGraph = id
+    const graph = expandWholeModel(
+      document,
+      document.graphs.find((g) => g.id === id)!,
+    )
+    const stages = [...new Set(graph.nodes.map((n) => instanceOf(n)!.stage))]
+    await page.goto('/')
+    await page.getByLabel('Open model JSON').setInputFiles({
+      name: 'whole.model.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(document)),
+    })
+    await expect(page.locator('.routed-connection')).toHaveCount(graph.edges.length, {
+      timeout: 60000,
+    })
+    const readPositions = () =>
+      page.locator('.react-flow__node').evaluateAll((nodes) =>
+        Object.fromEntries(
+          nodes.map((node) => {
+            const transform = new DOMMatrixReadOnly((node as HTMLElement).style.transform)
+            return [node.getAttribute('data-id')!, { x: transform.e, y: transform.f }]
+          }),
+        ),
+      )
+    const initial = await readPositions()
+    const spread = Object.fromEntries(
+      graph.nodes.map((n) => [
+        n.id,
+        { x: initial[n.id].x + stages.indexOf(instanceOf(n)!.stage) * 20000, y: initial[n.id].y },
+      ]),
+    )
+    document.graphs.find((g) => g.id === id)!.layout.positions = spread
+    await page.getByLabel('Open model JSON').setInputFiles({
+      name: 'spread.model.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(document)),
+    })
+    await expect(page.locator('.routed-connection')).toHaveCount(graph.edges.length, {
+      timeout: 60000,
+    })
+    await page.getByRole('button', { name: 'Auto-layout', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Undo auto-layout' })).toBeEnabled({
+      timeout: 60000,
+    })
+    await connectionsReady(page, graph.edges.length)
+    const compact = await readPositions()
+    const width = (positions: typeof compact) =>
+      Math.max(...Object.values(positions).map((p) => p.x)) -
+      Math.min(...Object.values(positions).map((p) => p.x))
+    expect(width(compact)).toBeLessThan(width(spread) * 0.5)
+    expect(Object.keys(compact).sort()).toEqual(Object.keys(spread).sort())
+    expect(await visibleGeometry(page)).toEqual([])
+    if (id === 'whole-model') await page.screenshot({ path: 'docs/images/whole-model-compact.png' })
+    await page.getByRole('button', { name: 'Undo auto-layout' }).click()
+    await expect.poll(readPositions).toEqual(spread)
+    await connectionsReady(page, graph.edges.length)
+    await page.getByRole('button', { name: 'Switch layout direction' }).click()
+    await expect(page.getByRole('button', { name: 'Auto-layout', exact: true })).toBeEnabled({
+      timeout: 60000,
+    })
+    await connectionsReady(page, graph.edges.length)
+    expect(await visibleGeometry(page)).toEqual([])
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (graphId) =>
+            JSON.parse(
+              localStorage.getItem('model-visualizer.workspace.v1') ?? 'null',
+            )?.graphs.find((g: { id: string }) => g.id === graphId)?.layout.direction,
+          id,
+        ),
+      )
+      .toBe('DOWN')
+    const final = await readPositions()
+    const savedFinal = await page.evaluate(
+      (graphId) =>
+        JSON.parse(localStorage.getItem('model-visualizer.workspace.v1')!).graphs.find(
+          (g: { id: string }) => g.id === graphId,
+        ).layout.positions,
+      id,
+    )
+    // CSS serialization and DOMMatrix use lower precision than saved canvas
+    // coordinates. Check that every rendered point matches within 0.01 px.
+    for (const [nodeId, position] of Object.entries(final)) {
+      expect(Math.abs(savedFinal[nodeId].x - position.x)).toBeLessThan(0.01)
+      expect(Math.abs(savedFinal[nodeId].y - position.y)).toBeLessThan(0.01)
+    }
+    await page.reload()
+    await expect(page.locator('.routed-connection')).toHaveCount(graph.edges.length, {
+      timeout: 60000,
+    })
+    expect(await readPositions()).toEqual(final)
+  })
 
 for (const [index, name] of names.entries())
   test(`${name}: every rendered link and label stays clear in both directions`, async ({

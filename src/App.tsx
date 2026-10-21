@@ -53,6 +53,8 @@ import { upgradeCachePolicies } from './model/policy-upgrade'
 import { upgradeTeachingProvenance } from './model/teaching-provenance'
 import { cachePolicyLabel, residentCount, kvHeadFor } from './model/attention'
 import { CachePolicyControls } from './components/CachePolicyControls'
+import { TeachingModelControls } from './components/TeachingModelControls'
+import { updateTeachingConfig } from './model/teaching-config'
 import { NUMERICAL_SESSION_KEY } from './model/numerics/identity'
 import type { NumericalSession } from './model/numerics/session'
 import { CHECKPOINT_SESSION_KEY } from './model/checkpoints/identity'
@@ -271,7 +273,10 @@ export default function App() {
 
   function setConfig(changes: Partial<ModelConfig>) {
     try {
-      const candidate = configurationLayouts(doc, { ...doc, config: { ...doc.config, ...changes } })
+      const candidate = configurationLayouts(doc, {
+        ...doc,
+        config: updateTeachingConfig(doc.config, changes),
+      })
       const next = parseDocument(candidate)
       setDoc(next)
     } catch (error) {
@@ -280,15 +285,7 @@ export default function App() {
   }
 
   function setAttention(attention: ModelConfig['attention']) {
-    setConfig({
-      attention,
-      nKvHeads:
-        attention === 'MHA'
-          ? doc.config.nQueryHeads
-          : attention === 'MQA'
-            ? 1
-            : Math.max(2, doc.config.nQueryHeads / 4),
-    })
+    setConfig({ attention })
   }
 
   const searchResults = useMemo(
@@ -1010,111 +1007,7 @@ export default function App() {
             Change the architecture and watch every tensor dimension update. No model weights are
             loaded.
           </p>
-          <div className="configuration-form">
-            <label>
-              Decoder layers
-              <select
-                value={doc.config.nLayers}
-                onChange={(e) => setConfig({ nLayers: Number(e.target.value) })}
-              >
-                {[...new Set([2, 6, 12, 24, doc.config.nLayers])]
-                  .sort((a, b) => a - b)
-                  .map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label>
-              Query heads
-              <select
-                value={doc.config.nQueryHeads}
-                onChange={(e) => {
-                  const h = Number(e.target.value)
-                  setConfig({
-                    nQueryHeads: h,
-                    dModel: h * doc.config.headDim,
-                    nKvHeads:
-                      doc.config.attention === 'MHA'
-                        ? h
-                        : doc.config.attention === 'MQA'
-                          ? 1
-                          : Math.max(2, h / 4),
-                  })
-                }}
-              >
-                {[...new Set([4, 8, 16, doc.config.nQueryHeads])]
-                  .sort((a, b) => a - b)
-                  .map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label>
-              Features per head
-              <select
-                value={doc.config.headDim}
-                onChange={(e) =>
-                  setConfig({
-                    headDim: Number(e.target.value),
-                    dModel: Number(e.target.value) * doc.config.nQueryHeads,
-                  })
-                }
-              >
-                {[...new Set([32, 64, 128, doc.config.headDim])]
-                  .sort((a, b) => a - b)
-                  .map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label>
-              Feed-forward width
-              <select
-                value={doc.config.ffnDim}
-                onChange={(e) => setConfig({ ffnDim: Number(e.target.value) })}
-              >
-                {[...new Set([768, 1536, 3072, doc.config.ffnDim])]
-                  .sort((a, b) => a - b)
-                  .map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label>
-              Context capacity
-              <select
-                value={doc.config.contextLength}
-                onChange={(e) => setConfig({ contextLength: Number(e.target.value) })}
-              >
-                {[...new Set([2048, 8192, 32768, 131072, doc.config.contextLength])]
-                  .sort((a, b) => a - b)
-                  .map((v) => (
-                    <option key={v} value={v}>
-                      {v.toLocaleString()}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label>
-              Cache scalar storage
-              <select
-                value={doc.config.dtypeBytes}
-                onChange={(e) => setConfig({ dtypeBytes: Number(e.target.value) as 1 | 2 | 4 })}
-              >
-                <option value={1}>1 byte / scalar (metadata excluded)</option>
-                <option value={2}>2 bytes / scalar (BF16 / FP16)</option>
-                <option value={4}>4 bytes / scalar (FP32)</option>
-              </select>
-            </label>
-          </div>
+          <TeachingModelControls document={doc} onChange={setConfig} />
           <CachePolicyControls config={doc.config} onChange={(kvCache) => setConfig({ kvCache })} />
           <div className="configuration-result">
             <Cpu size={20} />

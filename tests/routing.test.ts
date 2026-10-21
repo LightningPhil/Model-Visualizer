@@ -19,6 +19,7 @@ import { numericalGraph } from '../src/model/numerics/session'
 import { defaultNumericalSettings } from '../src/model/numerics/engine'
 import { storiesManifest } from '../src/model/checkpoints/stories'
 import { parseModelConfig } from '../src/model/schema'
+import { packStageFootprints, stageBounds } from '../src/model/group-layout'
 
 let engine: AvoidEngine
 const document = parseDocument(starter)
@@ -28,6 +29,25 @@ beforeAll(async () => {
 })
 
 describe('complete diagram layout', () => {
+  for (const id of ['whole-model', 'whole-model-heads'])
+    for (const direction of ['RIGHT', 'DOWN'] as const)
+      it(`${id} ${direction}: packs differently sized stages and keeps every route clear`, async () => {
+        const graph = expandWholeModel(
+          document,
+          document.graphs.find((g) => g.id === id)!,
+        )
+        const plan = await planLayout(engine, graph, direction)
+        expect(routingProblems(graph, plan.positions, plan.routing)).toEqual([])
+        expect(Object.keys(plan.routing.edges)).toHaveLength(graph.edges.length)
+        const bounds = stageBounds(graph, plan.positions).map((s) => s.rect)
+        const maxWidth = Math.max(...bounds.map((b) => b.width)) + 440
+        const maxHeight = Math.max(...bounds.map((b) => b.height)) + 440
+        const columns = direction === 'RIGHT' ? 3 : 2
+        const legacyArea = maxWidth * columns * maxHeight * Math.ceil(bounds.length / columns)
+        expect(plan.routing.bounds.width * plan.routing.bounds.height).toBeLessThan(
+          legacyArea * 0.8,
+        )
+      }, 90000)
   for (const direction of ['RIGHT', 'DOWN'] as const)
     it(`trained Stories260K ${direction}: all 354 components and links remain inspectable`, async () => {
       const graph = numericalGraph(
@@ -99,6 +119,27 @@ describe('complete diagram layout', () => {
         expect(routingProblems(graph, positions, routes)).toEqual([])
         expect(positions).toEqual(graph.layout.positions)
       })
+})
+
+describe('stage packing', () => {
+  for (const direction of ['RIGHT', 'DOWN'] as const)
+    it(`${direction}: uses the actual footprint of each unequal section`, () => {
+      const sizes = [
+        { x: -20, y: 10, width: 1000, height: 200 },
+        { x: 40, y: -80, width: 5000, height: 1800 },
+        { x: 0, y: 0, width: 800, height: 300 },
+        { x: 0, y: 0, width: 1600, height: 600 },
+      ]
+      const offsets = packStageFootprints(sizes, direction)
+      expect(packStageFootprints(sizes, direction)).toEqual(offsets)
+      const packed = offsets.map((p, i) => ({ ...sizes[i], ...p }))
+      for (const [i, a] of packed.entries())
+        for (const b of packed.slice(i + 1)) expect(rectanglesOverlap(a, b, 179)).toBe(false)
+      const area =
+        Math.max(...packed.map((r) => r.x + r.width)) *
+        Math.max(...packed.map((r) => r.y + r.height))
+      expect(area).toBeLessThan(4 * 5440 * 2240 * 0.65)
+    })
 })
 
 function fixture(

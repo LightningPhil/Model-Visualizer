@@ -102,12 +102,12 @@ export async function planLayout(
   graph: ModelGraph,
   direction = graph.layout.direction,
 ): Promise<LayoutPlan> {
-  if (usesStageLayout(graph)) return planGrouped(A, graph, direction)
   const automatic: ModelGraph = {
     ...graph,
     edges: graph.edges.map((edge) => ({ ...edge, sourceSide: undefined, targetSide: undefined })),
     layout: { ...graph.layout, direction },
   }
+  if (usesStageLayout(automatic)) return planGrouped(A, automatic, direction)
   let best: (LayoutPlan & { score: number }) | undefined
   for (let attempt = 0; attempt < 3; attempt++) {
     const positions = await placeNodes(automatic, direction, attempt)

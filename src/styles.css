@@ -2063,6 +2063,50 @@ h1 {
   color: var(--secondary);
   font-size: 11px;
 }
+.head-partition {
+  margin: 22px 28px 0;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.head-partition > strong {
+  display: block;
+  margin: 10px 0 14px;
+  font: 500 14px var(--mono);
+  color: var(--cyan);
+}
+.head-partition p,
+.configuration-hint {
+  color: var(--secondary);
+  font-size: 11px;
+  line-height: 1.7;
+  margin: 12px 0 0;
+}
+.configuration-hint {
+  grid-column: 1 / -1;
+  margin: -8px 0 0;
+}
+.head-partition-strip {
+  display: flex;
+  gap: 3px;
+  height: 28px;
+}
+.head-partition-strip span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  background: color-mix(in srgb, var(--cyan) 12%, var(--surface));
+  color: var(--cyan);
+  border: 1px solid var(--cyan);
+  border-radius: 3px;
+  font: 9px/26px var(--mono);
+}
+.head-partition-strip span[data-group='1'] {
+  border-style: dashed;
+  background: var(--surface);
+}
 .configuration-form select {
   display: block;
   width: 100%;

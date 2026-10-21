@@ -51,7 +51,9 @@ export function segmentHitsRect({ a, b }: Segment, rect: Rect, padding = 0) {
       Math.max(a.y, b.y) > r.y + EPSILON &&
       Math.min(a.y, b.y) < r.y + r.height - EPSILON
     )
-  throw new Error('A routed segment must be horizontal or vertical.')
+  throw new Error(
+    `A routed segment must be horizontal or vertical: (${a.x}, ${a.y}) → (${b.x}, ${b.y}).`,
+  )
 }
 
 export function crossing(a: Segment, b: Segment): Point | null {

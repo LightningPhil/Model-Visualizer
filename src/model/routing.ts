@@ -190,7 +190,7 @@ function connect(
   return conn
 }
 
-function readRoute(connection: NativeConnector): Point[] {
+function readRoute(connection: NativeConnector, edgeId: string): Point[] {
   const route = connection.displayRoute()
   const points: Point[] = []
   try {
@@ -204,6 +204,9 @@ function readRoute(connection: NativeConnector): Point[] {
   }
   if (points.length < 2)
     throw new Error('A connection could not be routed. Move overlapping components apart.')
+  for (const { a, b } of segments(points))
+    if (Math.abs(a.x - b.x) >= EPSILON && Math.abs(a.y - b.y) >= EPSILON)
+      throw new Error(`Connection ${edgeId} could not find an orthogonal route.`)
   return simplifyPoints(points)
 }
 
@@ -464,7 +467,9 @@ export function routeGraph(
       )
     }
     router.processTransaction()
-    const initial = Object.fromEntries(graph.edges.map((e) => [e.id, readRoute(connections[e.id])]))
+    const initial = Object.fromEntries(
+      graph.edges.map((e) => [e.id, readRoute(connections[e.id], e.id)]),
+    )
     const labels = placeLabels(
       { ...graph, layout: { ...graph.layout, direction } },
       positions,
@@ -520,7 +525,7 @@ export function routeGraph(
     for (const edge of graph.edges) {
       edges[edge.id] = {
         id: edge.id,
-        points: simplifyPoints(halves[edge.id].flatMap(readRoute)),
+        points: simplifyPoints(halves[edge.id].flatMap((half) => readRoute(half, edge.id))),
         label: labels[edge.id].rect,
         ...endpoints(edge),
       }

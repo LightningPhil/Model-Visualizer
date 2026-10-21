@@ -10,7 +10,46 @@ import {
   type RoutedEdge,
   type RoutingResult,
 } from './routing'
-import { diagramBounds, NODE_HEIGHT, NODE_WIDTH, segments, type Rect } from './geometry'
+import { diagramBounds, NODE_HEIGHT, NODE_WIDTH, segments, type Rect, type Point } from './geometry'
+
+/** Pack complete routed footprints, not equal cells sized for the largest
+ * stage. Adjacent sections share a routing gutter; short rows and columns
+ * never reserve the unused extent of an unrelated decoder layer. */
+export function packStageFootprints(
+  bounds: Rect[],
+  direction: 'RIGHT' | 'DOWN',
+  gap = 180,
+): Point[] {
+  if (!bounds.length) return []
+  const vertical = direction === 'DOWN'
+  const major = (r: Rect) => (vertical ? r.height : r.width)
+  const minor = (r: Rect) => (vertical ? r.width : r.height)
+  const area = bounds.reduce((sum, b) => sum + (b.width + gap) * (b.height + gap), 0)
+  const target = Math.max(...bounds.map(major), Math.sqrt(area * 1.8))
+  const bands: number[][] = [[]]
+  let length = 0
+  bounds.forEach((b, i) => {
+    if (length && length + gap + major(b) > target) {
+      bands.push([])
+      length = 0
+    }
+    bands.at(-1)!.push(i)
+    length += (length ? gap : 0) + major(b)
+  })
+  const offsets: Point[] = []
+  let across = 0
+  bands.forEach((band, row) => {
+    let along = 0
+    // Keep consecutive sections beside each other at each wrap. Each stage's
+    // internal direction remains intact; the router owns the connecting turn.
+    for (const i of row % 2 ? band.toReversed() : band) {
+      offsets[i] = vertical ? { x: across, y: along } : { x: along, y: across }
+      along += major(bounds[i]) + gap
+    }
+    across += Math.max(...band.map((i) => minor(bounds[i]))) + gap
+  })
+  return offsets
+}
 
 export function stageGraphs(graph: ModelGraph): ModelGraph[] {
   const stages = new Map<string, string[]>()
@@ -54,7 +93,12 @@ export function routeGrouped(
   for (const stage of stageGraphs(graph)) {
     const localPositions = Object.fromEntries(stage.nodes.map((n) => [n.id, positions[n.id]]))
     const localPorts = Object.fromEntries(stage.nodes.map((n) => [n.id, ports[n.id]]))
-    const routed = routeGraph(A, stage, localPositions, direction, { ports: localPorts })
+    let routed: RoutingResult
+    try {
+      routed = routeGraph(A, stage, localPositions, direction, { ports: localPorts })
+    } catch (error) {
+      throw new Error(`${stage.id}: ${error instanceof Error ? error.message : 'Routing failed.'}`)
+    }
     Object.assign(edges, routed.edges)
   }
   const internal = Object.values(edges)
@@ -121,23 +165,30 @@ export async function planGrouped(
       bounds: template.bounds,
     })
   }
-  const maxWidth = Math.max(...plans.map((p) => p.bounds.width)) + 440
-  const maxHeight = Math.max(...plans.map((p) => p.bounds.height)) + 440
-  const columns = direction === 'RIGHT' ? 3 : 2
-  const positions: Positions = {}
-  plans.forEach(({ stage, positions: local, bounds }, i) => {
-    const row = Math.floor(i / columns),
-      column = row % 2 ? columns - 1 - (i % columns) : i % columns
-    const dx = column * maxWidth + 220 - bounds.x,
-      dy = row * maxHeight + 220 - bounds.y
-    for (const node of stage.nodes)
-      positions[node.id] = { x: local[node.id].x + dx, y: local[node.id].y + dy }
-  })
-  const routing = routeGrouped(A, graph, positions, direction)
-  const problems = routingProblems(graph, positions, routing)
-  if (problems.length)
-    throw new Error(`Stage layout needs more room: ${problems.slice(0, 2).join('; ')}`)
-  return { positions, routing }
+  let problem = ''
+  for (const gap of [180, 260, 380]) {
+    const offsets = packStageFootprints(
+      plans.map((p) => p.bounds),
+      direction,
+      gap,
+    )
+    const positions: Positions = {}
+    plans.forEach(({ stage, positions: local, bounds }, i) => {
+      const dx = Math.round(offsets[i].x + 56 - bounds.x),
+        dy = Math.round(offsets[i].y + 56 - bounds.y)
+      for (const node of stage.nodes)
+        positions[node.id] = { x: local[node.id].x + dx, y: local[node.id].y + dy }
+    })
+    try {
+      const routing = routeGrouped(A, graph, positions, direction)
+      const problems = routingProblems(graph, positions, routing)
+      if (!problems.length) return { positions, routing }
+      problem = problems.slice(0, 2).join('; ')
+    } catch (error) {
+      problem = error instanceof Error ? error.message : 'Routing failed.'
+    }
+  }
+  throw new Error(`Stage layout needs more room: ${problem}`)
 }
 
 export function stageBounds(graph: ModelGraph, positions: Positions): { id: string; rect: Rect }[] {
