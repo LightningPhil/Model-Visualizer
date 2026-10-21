@@ -2076,6 +2076,146 @@ h1 {
   font: 500 14px var(--mono);
   color: var(--cyan);
 }
+.head-partition-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.head-partition-heading .tooltip-settings-trigger {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  color: var(--cyan);
+}
+.help-tooltip {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(380px, calc(100vw - 24px));
+  max-height: min(560px, calc(100vh - 24px));
+  overflow: auto;
+  padding: 18px 19px 13px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--cyan);
+  border-radius: 9px;
+  box-shadow:
+    0 12px 42px #0005,
+    0 0 20px color-mix(in srgb, var(--cyan) 7%, transparent);
+  font:
+    12px/1.7 'DM Sans Variable',
+    system-ui,
+    sans-serif;
+  text-align: left;
+  z-index: 10000;
+}
+.help-tooltip::backdrop {
+  background: transparent;
+  pointer-events: none;
+}
+.help-tooltip-heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--cyan);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.help-tooltip-heading svg {
+  flex-shrink: 0;
+}
+.help-tooltip p {
+  margin: 12px 0 0;
+  color: var(--secondary);
+}
+.help-tooltip dl {
+  margin: 14px 0 0;
+  padding-top: 3px;
+  border-top: 1px solid var(--border);
+}
+.help-tooltip dl > div {
+  margin-top: 9px;
+}
+.help-tooltip dt {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+.help-tooltip dd {
+  margin: 2px 0 0;
+  color: var(--secondary);
+}
+.help-tooltip .help-tooltip-sources {
+  color: var(--muted);
+  font-size: 10px;
+}
+.help-tooltip-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font: 9px/1.6 var(--mono);
+}
+.help-tooltip-footer > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.help-tooltip kbd {
+  font: inherit;
+  border: 1px solid var(--border);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+.help-preferences {
+  max-width: 490px;
+}
+.help-preferences-body {
+  padding: 20px 28px;
+}
+.help-preferences-body p {
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--secondary);
+}
+.help-enable {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.help-enable input {
+  accent-color: var(--cyan);
+}
+.help-delay-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  margin: 25px 0 9px;
+}
+.help-delay-label span {
+  color: var(--muted);
+  font: 10px var(--mono);
+}
+.help-preferences-body > input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 5px;
+  font: 15px var(--mono);
+}
+.help-preferences .help-save-status {
+  font-size: 10px;
+  margin: 16px 0 0;
+}
 .head-partition p,
 .configuration-hint {
   color: var(--secondary);

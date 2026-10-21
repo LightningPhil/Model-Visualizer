@@ -22,7 +22,10 @@ export function Dialog({
     <dialog
       ref={ref}
       className={`modal ${className}`}
-      onCancel={onClose}
+      onCancel={(event) => {
+        event.stopPropagation()
+        onClose()
+      }}
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose()
       }}

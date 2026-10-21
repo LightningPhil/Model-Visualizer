@@ -20,7 +20,7 @@ export function PacketGlyph({ packet }: { packet: Packet }) {
   return (
     <span
       className={`packet-glyph packet-${packet.status}`}
-      title={`${packet.id} · position ${packet.position} · ${packet.status}`}
+      data-tooltip-detail={`${packet.id} · position ${packet.position} · ${packet.status}`}
       data-packet-status={packet.status}
     >
       {packet.status === 'accepted' ? (
@@ -310,7 +310,7 @@ export function SimulationPanel({
                         <i
                           key={s}
                           data-sequence-position={s}
-                          title={`Absolute position ${s}`}
+                          data-tooltip-detail={`Absolute position ${s}`}
                           className={s >= frame.contextLength ? 'tentative-position' : ''}
                         >
                           {s}

@@ -39,6 +39,7 @@ The browser tests launch their own Vite server on port 5200. Set `PLAYWRIGHT_PRE
 - **Layouts:** drag nodes, pan/zoom, fit, or auto-layout horizontally/vertically. ELK compares complete arrangements; large maps pack each section's actual routed footprint into compact bands. libavoid routes orthogonal connections around nodes and labels, with distinct ports and clean straight runs through annotations. Undo restores the previous layout. Every graph remembers its positions and viewport. [Compact whole-model preview](docs/images/whole-model-compact.png).
 - **Portable workspaces:** automatic browser-local saves, editable notebook, and readable JSON import/export. Invalid imports leave the current workspace intact.
 - **Appearance:** dark and light themes, cyan/violet/amber accents, category text and different legend shapes. No red/green status distinction.
+- **Detailed tooltips:** hover a control for 0.7 seconds to read its purpose, constraints and available alternatives. Move between controls to restart the delay; Escape dismisses the explanation. Use the question-mark control in the toolbar or workbench to choose a 0–5 second delay or disable automatic help. Preferences save on this browser, separately from model documents. [Dark](docs/images/detailed-tooltips.png) and [light/mobile](docs/images/detailed-tooltips-mobile.png) previews.
 
 Use `/` to search components. Open the **field guide** for explanations, the research library and a model-format introduction. On narrow screens, the menu opens navigation and the inspector button toggles its overlay.
 

@@ -37,6 +37,7 @@ import { Dialog } from '../Dialog'
 import { GraphCanvas, type Selection } from '../GraphCanvas'
 import { MathBlock } from '../Math'
 import { CachePolicyControls } from '../CachePolicyControls'
+import { TooltipSettingsButton } from '../help/TooltipProvider'
 import { TensorView } from './TensorView'
 import { CellCalculation } from './CellCalculation'
 import { HeadObservatory } from './HeadObservatory'
@@ -479,6 +480,7 @@ export function NumericalWorkbench({
         <button onClick={() => downloadTrace(trace)}>
           <Download size={13} /> Export trace
         </button>
+        <TooltipSettingsButton />
         <button aria-label="Toggle numerical theme" onClick={onTheme}>
           {doc.ui.theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
         </button>
@@ -656,6 +658,10 @@ export function NumericalWorkbench({
                 {questions.map((q) => (
                   <button
                     key={q.node}
+                    data-tooltip-title={q.title}
+                    data-tooltip-detail={
+                      trained && q.checkpointDescription ? q.checkpointDescription : q.description
+                    }
                     disabled={
                       (q.multiple && trace.settings.inputIds.length < 2) ||
                       q.call >= new Set(trace.frames.map((f) => f.call)).size
@@ -734,7 +740,7 @@ export function NumericalWorkbench({
               <span className="eyebrow">INPUT IDS</span>
               <div>
                 {trace.settings.inputIds.map((id, i) => (
-                  <label key={i} title={trained?.tokenizer.piece(id)}>
+                  <label key={i} data-tooltip-detail={trained?.tokenizer.piece(id)}>
                     <small>p{i}</small>
                     <input
                       aria-label={`Numerical input token ${i}`}
@@ -792,7 +798,7 @@ export function NumericalWorkbench({
                   <span
                     className="numerical-output-token"
                     key={i}
-                    title={trained?.tokenizer.piece(Number(p.id.slice(1)))}
+                    data-tooltip-detail={trained?.tokenizer.piece(Number(p.id.slice(1)))}
                   >
                     {p.id}
                     {trained && (
@@ -838,7 +844,7 @@ export function NumericalWorkbench({
               <button
                 key={l}
                 onClick={() => jump(`layer-${l}.attn.cachek`)}
-                title={`Inspect layer ${l} cache; ${positions.length} retained positions`}
+                data-tooltip-detail={`Inspect layer ${l} cache; ${positions.length} retained positions`}
               >
                 <b>L{l}</b>
                 <span>
@@ -846,7 +852,7 @@ export function NumericalWorkbench({
                     <i
                       key={p}
                       data-stored={positions.includes(p)}
-                      title={`Position ${p}: ${positions.includes(p) ? 'stored' : 'absent'}`}
+                      data-tooltip-detail={`Position ${p}: ${positions.includes(p) ? 'stored' : 'absent'}`}
                     >
                       {p}
                     </i>
@@ -1201,7 +1207,7 @@ function ProbabilityStrip({
       <span className="eyebrow">VOCABULARY · TOP 8 OF {width}</span>
       {top.map((t) => (
         <button key={t.id} onClick={() => onSelect(row * width + t.id)}>
-          <span title={piece?.(t.id)}>
+          <span data-tooltip-detail={piece?.(t.id)}>
             #{t.id}
             {piece ? ` · ${piece(t.id)}` : ''}
           </span>

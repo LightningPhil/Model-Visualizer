@@ -198,7 +198,7 @@ export function Inspector({
                 <button
                   className="icon-button"
                   aria-label="Copy LaTeX"
-                  title="Copy LaTeX"
+                  data-tooltip-detail="Copy LaTeX"
                   onClick={() => void copyEquation()}
                 >
                   <Copy size={13} />

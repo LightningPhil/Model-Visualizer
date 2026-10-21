@@ -150,7 +150,7 @@ export function TensorView({
                               : {}
                           }
                           onClick={() => onCell(flat)}
-                          title={`[${unravel(flat, tensor.shape).join(', ')}] = ${String(value)}`}
+                          data-tooltip-detail={`[${unravel(flat, tensor.shape).join(', ')}] = ${String(value)}`}
                           aria-label={`Cell ${unravel(flat, tensor.shape).join(', ')}: ${valueLabel(value, 7)}`}
                         >
                           {valueLabel(value, 3)}

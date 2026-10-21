@@ -54,6 +54,7 @@ import { upgradeTeachingProvenance } from './model/teaching-provenance'
 import { cachePolicyLabel, residentCount, kvHeadFor } from './model/attention'
 import { CachePolicyControls } from './components/CachePolicyControls'
 import { TeachingModelControls } from './components/TeachingModelControls'
+import { TooltipSettingsButton } from './components/help/TooltipProvider'
 import { updateTeachingConfig } from './model/teaching-config'
 import { NUMERICAL_SESSION_KEY } from './model/numerics/identity'
 import type { NumericalSession } from './model/numerics/session'
@@ -353,10 +354,11 @@ export default function App() {
           <span className="breadcrumb-current">Workbench</span>
         </div>
         <div className="topbar-actions">
+          <TooltipSettingsButton />
           <button
             className="icon-button search-button"
             aria-label="Search components"
-            title="Search components (/)"
+            data-tooltip-detail="Search components (/)"
             onClick={() => setModal('search')}
           >
             <Search size={17} />
@@ -364,7 +366,7 @@ export default function App() {
           <button
             className="icon-button"
             aria-label={doc.ui.theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            title="Toggle theme"
+            data-tooltip-detail="Toggle theme"
             onClick={() =>
               setDoc({
                 ...doc,
@@ -485,6 +487,8 @@ export default function App() {
                 return (
                   <button
                     className={`nav-item ${graph.id === g.id ? 'active' : ''}`}
+                    data-tooltip-data-tooltip-detail={labels[g.id] ?? g.title}
+                    data-tooltip-detail={g.description}
                     key={g.id}
                     aria-current={graph.id === g.id ? 'page' : undefined}
                     onClick={() => openGraph(g.id)}
@@ -501,7 +505,7 @@ export default function App() {
               <h3>MODEL CONFIGURATION</h3>
               <button
                 className="icon-button"
-                title="Edit configuration"
+                data-tooltip-detail="Edit configuration"
                 aria-label="Edit model configuration"
                 onClick={() => setModal('config')}
               >
@@ -585,7 +589,7 @@ export default function App() {
             </span>
             <button
               className="icon-button"
-              title="Toggle inspector"
+              data-tooltip-detail="Toggle inspector"
               aria-label="Toggle inspector"
               aria-pressed={inspectorOpen}
               onClick={() => setInspectorOpen(!inspectorOpen)}
@@ -626,7 +630,7 @@ export default function App() {
                     <button
                       className={`token-chip token-color-${i % 3} ${currentToken === i ? 'selected-token' : ''}`}
                       key={`${i}-${token.id}`}
-                      title={`Position ${i} · ID ${token.id} · bytes [${token.bytes.join(', ')}]`}
+                      data-tooltip-detail={`Position ${i} · ID ${token.id} · bytes [${token.bytes.join(', ')}]`}
                       aria-label={`Token ${i}: ${token.label}, ID ${token.id}`}
                       onClick={() => setSelectedToken(i)}
                     >
@@ -642,7 +646,7 @@ export default function App() {
                 </div>
                 <button
                   className="tokenizer-open"
-                  title="Open tokenizer lab"
+                  data-tooltip-detail="Open tokenizer lab"
                   aria-label="Open tokenizer lab"
                   onClick={() => openGraph('tokenization')}
                 >
@@ -776,7 +780,7 @@ export default function App() {
             </label>
             <button
               className={`symbolic-button ${symbolic ? 'active' : ''}`}
-              title="Toggle symbolic dimensions"
+              data-tooltip-detail="Toggle symbolic dimensions"
               aria-label="Toggle symbolic dimensions"
               aria-pressed={symbolic}
               onClick={() => setSymbolic(!symbolic)}

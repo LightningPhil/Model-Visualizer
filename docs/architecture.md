@@ -35,6 +35,14 @@ React Flow is the viewport/interaction layer; it does not own the portable docum
 
 Importing a document remounts graph state even if the document and graph IDs match the previous document. Layout completions are scoped to the graph that requested them and invalidated on unmount, preventing late results from contaminating a different graph.
 
+## Explanatory help
+
+`src/help/catalog.ts` owns detailed control explanations, enum alternatives and named primary-source attributions. `src/components/help/` resolves dynamic controls and manages one shared hover/focus card. Native `title` hints are replaced so they cannot bypass the configured delay. Mathematical references remain linked in the existing field guide and inspector; tooltip content distinguishes architectural studies, scripted simulation, untrained reference arrays and learned checkpoint inference.
+
+The default delay is 700 ms of continuous hover over one control, including its text/icon children. Crossing to another control starts a new timer. Leaving, clicking, editing or pressing Escape cancels pending help; scrolling starts any new hover from zero at the new position. Dragging and touch do not trigger automatic hover help. Keyboard focus provides the same explanations without taking focus away. Cards remain readable while hovered, fit the viewport and use non-focusable content with `role="tooltip"` and a temporary `aria-describedby` association. Escape dismisses visible help before a containing dialog. The behavior follows the [WAI tooltip pattern](https://www.w3.org/WAI/ARIA/apg/patterns/tooltip/); native manual popovers keep cards above dialogs without clipping them to the dialog's scrolling area.
+
+The question-mark control opens timing preferences from the main toolbar, model builder and numerical/trained workbenches. Delay (0–5 seconds) and enable/disable settings save separately under `model-visualizer.help-preferences.v1`. They are device preferences, not model content or another document format. Additional preference metadata is retained and future versions are not overwritten. Closed views, replaced controls, blur and unmount cannot leave a delayed ghost card behind. Browser tests cover exact timing, cancellation, preference persistence, nested dialogs, keyboard operation, enum details and light/narrow placement.
+
 ## Graph hierarchy and branching
 
 Each graph is a flat set of nodes and directed connections. A node's `childGraph` navigates to an independent detailed graph; `repeat` describes repeated blocks without drawing hundreds of copies. Each decoder layer has separate conceptual parameters/state. The selected layer is explicit in block/attention/feed-forward views and connected to the cache slice selector.

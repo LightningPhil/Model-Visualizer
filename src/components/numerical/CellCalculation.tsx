@@ -27,7 +27,7 @@ export function CellCalculation({
     <section className="cell-calculation" aria-label="Selected cell calculation">
       <div className="numeric-section-heading">
         <span className="eyebrow">THIS CELL, EXPLAINED</span>
-        <code data-testid="cell-result" title={String(proof.result)}>
+        <code data-testid="cell-result" data-tooltip-detail={String(proof.result)}>
           {valueLabel(proof.result, 8)}
         </code>
       </div>
@@ -56,7 +56,10 @@ export function CellCalculation({
             <div className="proof-term" key={i}>
               <small>{term.label}</small>
               <span>
-                <button title="Inspect this operand" onClick={() => onOperand(term.source)}>
+                <button
+                  data-tooltip-detail="Inspect this operand"
+                  onClick={() => onOperand(term.source)}
+                >
                   {valueLabel(term.a, 5)}
                 </button>
                 {tensor.recipe.op === 'rmsnorm' && <sup>2</sup>}
@@ -65,7 +68,9 @@ export function CellCalculation({
                     {tensor.recipe.op === 'add' ? ' + ' : ' × '}
                     <button
                       disabled={!term.second}
-                      title={term.second ? 'Inspect this operand' : 'Rotation coefficient'}
+                      data-tooltip-detail={
+                        term.second ? 'Inspect this operand' : 'Rotation coefficient'
+                      }
                       onClick={() => term.second && onOperand(term.second)}
                     >
                       {valueLabel(term.b, 5)}

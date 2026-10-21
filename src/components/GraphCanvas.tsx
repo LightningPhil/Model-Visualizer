@@ -70,6 +70,8 @@ const ModelNode = memo(function ModelNode({ data, selected }: NodeProps<VisualNo
     <div
       className={`model-node category-${component.category} ${selected ? 'is-selected' : ''} ${data.execution ? `execution-${data.execution}` : ''} ${instanceOf(component)?.optional ? 'optional-component' : ''}`}
       data-execution={data.execution}
+      data-tooltip-data-tooltip-detail={component.title}
+      data-tooltip-detail={component.description}
     >
       {data.ports.map((port) => (
         <Handle
@@ -98,7 +100,7 @@ const ModelNode = memo(function ModelNode({ data, selected }: NodeProps<VisualNo
           <button
             className="node-open nodrag"
             aria-label={`Explore ${component.title}`}
-            title="Explore inside"
+            data-tooltip-detail="Explore inside"
             onClick={(event) => {
               event.stopPropagation()
               data.onOpen(component.childGraph!)
@@ -164,7 +166,8 @@ function OperationEdge(props: EdgeProps<VisualEdge>) {
           }}
           data-label-edge={props.id}
           onClick={() => props.data!.onSelect(props.id)}
-          title={connection.operation}
+          data-tooltip-data-tooltip-detail={connection.operation}
+          data-tooltip-detail={connection.description}
         >
           {connection.label}
         </button>
@@ -349,7 +352,7 @@ function Canvas(props: DiagramProps) {
         <button
           className="icon-button undo-layout"
           aria-label="Undo auto-layout"
-          title="Restore previous layout"
+          data-tooltip-detail="Restore previous layout"
           disabled={!canUndo || busy}
           onClick={undoLayout}
         >
@@ -362,7 +365,7 @@ function Canvas(props: DiagramProps) {
         <button
           className="icon-button direction-button"
           aria-label="Switch layout direction"
-          title="Switch layout direction"
+          data-tooltip-detail="Switch layout direction"
           disabled={busy}
           onClick={() => void arrange(graph.layout.direction === 'RIGHT' ? 'DOWN' : 'RIGHT')}
         >
@@ -372,7 +375,7 @@ function Canvas(props: DiagramProps) {
       <div className="zoom-controls">
         <button
           aria-label="Zoom out"
-          title="Zoom out"
+          data-tooltip-detail="Zoom out"
           onClick={() => void flow.zoomOut({ duration: 200 })}
         >
           <Minus size={15} />
@@ -380,18 +383,18 @@ function Canvas(props: DiagramProps) {
         <span>{Math.round(viewport.zoom * 100)}%</span>
         <button
           aria-label="Zoom in"
-          title="Zoom in"
+          data-tooltip-detail="Zoom in"
           onClick={() => void flow.zoomIn({ duration: 200 })}
         >
           <Plus size={15} />
         </button>
         <i />
-        <button aria-label="Fit graph" title="Fit graph" onClick={() => fitGraph()}>
+        <button aria-label="Fit graph" data-tooltip-detail="Fit graph" onClick={() => fitGraph()}>
           <Scan size={17} />
         </button>
         <button
           aria-label="Actual size"
-          title="Actual size"
+          data-tooltip-detail="Actual size"
           onClick={() => void flow.zoomTo(1, { duration: 300 })}
         >
           <Maximize2 size={14} />

@@ -87,7 +87,11 @@ export function TokenizerLab({ encoded, selectedToken, onToken }: Shared) {
       </div>
       <div className="merge-pieces" aria-label="Pieces at the selected BPE step">
         {pieces.map((id, i) => (
-          <span key={i} className={i % 3 === 0 ? 'piece-violet' : ''} title={`ID ${id}`}>
+          <span
+            key={i}
+            className={i % 3 === 0 ? 'piece-violet' : ''}
+            data-tooltip-detail={`ID ${id}`}
+          >
             {demoTokenLabel(id)}
             <small>{id}</small>
           </span>
@@ -195,7 +199,7 @@ export function AttentionLab({
                           : {}
                       }
                       onClick={() => setCell([r, c])}
-                      title={
+                      data-tooltip-detail={
                         !canAttend(config, r, c)
                           ? c > r
                             ? 'Future position: masked'
@@ -331,7 +335,7 @@ export function CacheLab({
                   key={position}
                   data-position={position}
                   data-retained={retained}
-                  title={`Absolute position ${position}: ${retained ? 'retained' : 'not retained'}`}
+                  data-tooltip-detail={`Absolute position ${position}: ${retained ? 'retained' : 'not retained'}`}
                 >
                   <b>{retained ? '●' : '×'}</b>
                   {position}
@@ -505,7 +509,7 @@ export function MemoryLab({ encoded, selectedToken, onToken }: Shared) {
                 <>
                   <div className="ngram-tokens">
                     {tokens.map((t, i) => (
-                      <span key={i} title={`Token ID ${t.id}`}>
+                      <span key={i} data-tooltip-detail={`Token ID ${t.id}`}>
                         {t.label}
                       </span>
                     ))}

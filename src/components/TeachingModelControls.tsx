@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { headPartitions, kvHeadChoices, updateTeachingConfig } from '../model/teaching-config'
 import { expandWholeModel } from '../model/whole-model'
 import type { ModelConfig, ModelDocument } from '../model/schema'
+import { TooltipSettingsButton } from './help/TooltipProvider'
 
 export function TeachingModelControls({
   document,
@@ -55,7 +56,10 @@ export function TeachingModelControls({
   return (
     <>
       <div className="head-partition" aria-live="polite">
-        <span className="eyebrow">ONE RESIDUAL WIDTH · WHOLE HEADS</span>
+        <div className="head-partition-heading">
+          <span className="eyebrow">ONE RESIDUAL WIDTH · WHOLE HEADS</span>
+          <TooltipSettingsButton />
+        </div>
         <strong>
           {config.dModel.toLocaleString()} = {config.nQueryHeads} heads × {config.headDim} features
         </strong>
