@@ -45,7 +45,7 @@ import { Inspector } from './components/Inspector'
 import { Logo, graphIcons } from './components/Icons'
 import { AttentionLab, CacheLab, MemoryLab, MtpLab, TokenizerLab } from './components/Labs'
 import { Dialog } from './components/Dialog'
-import { addWholeModelView, expandWholeModel, instanceOf, isWholeModel } from './model/whole-model'
+import { addWholeModelView, instanceOf, isWholeModel } from './model/whole-model'
 import { useSimulation } from './components/useSimulation'
 import { SimulationPanel, SimulationStrip } from './components/SimulationPanel'
 import { configurationLayouts } from './model/configuration-layouts'
@@ -56,6 +56,7 @@ import { CachePolicyControls } from './components/CachePolicyControls'
 import { TeachingModelControls } from './components/TeachingModelControls'
 import { TooltipSettingsButton } from './components/help/TooltipProvider'
 import { updateTeachingConfig } from './model/teaching-config'
+import { createGraphCompiler } from './model/graph-compiler'
 import { NUMERICAL_SESSION_KEY } from './model/numerics/identity'
 import type { NumericalSession } from './model/numerics/session'
 import { CHECKPOINT_SESSION_KEY } from './model/checkpoints/identity'
@@ -149,9 +150,10 @@ export default function App() {
   )
 
   const authoredGraph = doc.graphs.find((g) => g.id === doc.ui.activeGraph)!
+  const compileGraph = useMemo(createGraphCompiler, [])
   const graph = useMemo(
-    () => expandWholeModel(doc, authoredGraph),
-    [doc.graphs, doc.config, authoredGraph],
+    () => compileGraph(doc, authoredGraph),
+    [doc.graphs, doc.config, authoredGraph, compileGraph],
   )
   const wholeModel = doc.graphs.find(isWholeModel)
   const whole = isWholeModel(authoredGraph)
@@ -292,7 +294,7 @@ export default function App() {
   const searchResults = useMemo(
     () =>
       doc.graphs
-        .flatMap((g) => expandWholeModel(doc, g).nodes.map((n) => ({ graph: g, node: n })))
+        .flatMap((g) => compileGraph(doc, g).nodes.map((n) => ({ graph: g, node: n })))
         .filter(({ node }) =>
           `${node.title} ${node.subtitle} ${node.description}`
             .toLowerCase()
@@ -933,6 +935,7 @@ export default function App() {
           )
         : inspectorOpen && (
             <Inspector
+              graph={graph}
               layer={layer}
               doc={doc}
               selection={selection}

@@ -6,7 +6,7 @@ import {
   useReactFlow,
   useStore,
 } from '@xyflow/react'
-import type { NodeChange } from '@xyflow/react'
+import type { NodeChange, ReactFlowState } from '@xyflow/react'
 import type { DiagramProps, LayoutSnapshot, VisualNode, VisualEdge } from './GraphCanvas'
 import { DiagramWorker } from '../model/layout-client'
 import {
@@ -19,6 +19,7 @@ import {
 } from '../model/geometry'
 import type { RoutingResult, Positions } from '../model/routing'
 import type { ModelGraph } from '../model/schema'
+import { reconcileNodes } from './diagram-view'
 
 function version(graph: ModelGraph, positions: Positions) {
   return JSON.stringify([
@@ -57,21 +58,27 @@ export function clearDrop(
   )
   return (
     candidates
-      .filter(clear)
       .sort(
         (a, b) =>
-          Math.hypot(a.x - position.x, a.y - position.y) -
-          Math.hypot(b.x - position.x, b.y - position.y),
-      )[0] ?? position
+          (a.x - position.x) ** 2 +
+          (a.y - position.y) ** 2 -
+          ((b.x - position.x) ** 2 + (b.y - position.y) ** 2),
+      )
+      .find(clear) ?? position
   )
 }
 
 export function useDiagram(props: DiagramProps) {
-  const { graph, symbols, selection, showShapes, symbolic, onOpen, notify } = props
+  const { graph, symbols, selection, showShapes, symbolic, notify } = props
   const flow = useReactFlow<VisualNode, VisualEdge>()
   const canvasRef = useRef<HTMLDivElement>(null)
   const propsRef = useRef(props)
   propsRef.current = props
+  const open = useCallback((id: string) => propsRef.current.onOpen(id), [])
+  const selectEdge = useCallback(
+    (id: string) => propsRef.current.onSelect({ type: 'edge', id }),
+    [],
+  )
   const [client, setClient] = useState<DiagramWorker | null>(null)
   const [busy, setBusy] = useState(false)
   const [ready, setReady] = useState(
@@ -101,7 +108,7 @@ export function useDiagram(props: DiagramProps) {
           symbols,
           showShapes,
           symbolic,
-          onOpen,
+          onOpen: open,
           ports: [],
           execution: props.execution
             ? props.execution.active.includes(component.id)
@@ -113,14 +120,17 @@ export function useDiagram(props: DiagramProps) {
         },
         selected: selection?.type === 'node' && selection.id === component.id,
       })),
-    [graph.nodes, symbols, showShapes, symbolic, onOpen, selection, props.execution],
+    [graph.nodes, symbols, showShapes, symbolic, open, selection, props.execution],
   )
   const [nodeState, setNodes] = useState<VisualNode[]>(() => buildNodes(graph.layout.positions))
   const positions = useMemo(
     () => Object.fromEntries(nodeState.map((n) => [n.id, n.position])),
     [nodeState],
   )
-  const routeVersion = version(graph, positions)
+  const routeVersion = useMemo(
+    () => version(graph, positions),
+    [graph.layout.direction, graph.edges, graph.nodes, positions],
+  )
   const result = routed?.key === routeVersion ? routed.result : null
   resultRef.current = result
 
@@ -187,28 +197,31 @@ export function useDiagram(props: DiagramProps) {
   }, [client])
 
   useEffect(() => {
-    if (!client || !ready || busy) return
+    if (!client || !ready || busy || routed?.key === routeVersion) return
     const current = ++request.current
-    const frame = requestAnimationFrame(() => {
-      void client
-        .route(graph, positions)
-        .then((next) => {
-          if (request.current !== current) return
-          setRouted({ key: routeVersion, result: next })
-          setRoutingError('')
-          initialized.current = true
-          if (!fitted.current) {
-            fitted.current = true
-            requestAnimationFrame(() => fitGraph(next.bounds, 0))
-          }
-        })
-        .catch((error) => {
-          if (request.current === current && error.name !== 'AbortError')
-            setRoutingError(error.message)
-        })
-    })
+    const timer = setTimeout(
+      () => {
+        void client
+          .route(graph, positions)
+          .then((next) => {
+            if (request.current !== current) return
+            setRouted({ key: routeVersion, result: next })
+            setRoutingError('')
+            initialized.current = true
+            if (!fitted.current) {
+              fitted.current = true
+              requestAnimationFrame(() => fitGraph(next.bounds, 0))
+            }
+          })
+          .catch((error) => {
+            if (request.current === current && error.name !== 'AbortError')
+              setRoutingError(error.message)
+          })
+      },
+      nodeState.some((node) => node.dragging) ? 90 : 0,
+    )
     return () => {
-      cancelAnimationFrame(frame)
+      clearTimeout(timer)
       request.current++
     }
     // The serialized geometry is the dependency, not selection or viewport state.
@@ -217,24 +230,28 @@ export function useDiagram(props: DiagramProps) {
 
   // Retain React Flow's measured dimensions and drag state. Rebuilding only
   // authored node data must not trigger an endless ResizeObserver measurement.
-  const nodes = useMemo(
-    () =>
-      buildNodes(positions).map((node) => ({
-        ...nodeState.find((current) => current.id === node.id),
-        ...node,
-        data: { ...node.data, ports: result?.ports[node.id] ?? [] },
-      })),
-    [buildNodes, positions, result, nodeState],
-  )
-  const portsReady = useStore((state) =>
-    Boolean(
-      result &&
-      Object.entries(result.ports).every(([id, ports]) => {
-        const bounds = state.nodeLookup.get(id)?.internals.handleBounds
-        return ports.every((port) => bounds?.[port.type]?.some((handle) => handle.id === port.id))
-      }),
-    ),
-  )
+  const previousNodes = useRef<VisualNode[]>([])
+  const nodes = useMemo(() => {
+    const next = reconcileNodes(buildNodes(positions), nodeState, previousNodes.current, result)
+    previousNodes.current = next
+    return next
+  }, [buildNodes, positions, result, nodeState])
+  const portsReadySelector = useMemo(() => {
+    let measured = false
+    return (state: ReactFlowState) => {
+      if (measured) return true
+      measured = Boolean(
+        result &&
+        Object.entries(result.ports).every(([id, ports]) => {
+          const bounds = state.nodeLookup.get(id)?.internals.handleBounds
+          return ports.every((port) => bounds?.[port.type]?.some((handle) => handle.id === port.id))
+        }),
+      )
+      return measured
+    }
+  }, [result])
+  const portsReady = useStore(portsReadySelector)
+  const previousEdges = useRef(new Map<string, VisualEdge>())
   const edges = useMemo(
     (): VisualEdge[] =>
       !result || !portsReady
@@ -243,6 +260,15 @@ export function useDiagram(props: DiagramProps) {
             const route = result.edges[connection.id]
             const selected = selection?.type === 'edge' && selection.id === connection.id
             const active = props.execution?.active.includes(connection.target)
+            const old = previousEdges.current.get(connection.id)
+            if (
+              old?.data?.connection === connection &&
+              old.data.route === route &&
+              old.selected === selected &&
+              old.data.active === active &&
+              old.data.playing === props.execution?.playing
+            )
+              return old
             const color =
               selected || active
                 ? 'var(--cyan)'
@@ -253,8 +279,9 @@ export function useDiagram(props: DiagramProps) {
                     : connection.kind === 'residual'
                       ? 'var(--cyan)'
                       : 'var(--edge)'
-            return {
+            const edge: VisualEdge = {
               id: connection.id,
+              ariaLabel: `${connection.operation}. ${connection.description}`,
               source: connection.source,
               target: connection.target,
               sourceHandle: route.source.id,
@@ -267,7 +294,7 @@ export function useDiagram(props: DiagramProps) {
                 route,
                 active,
                 playing: props.execution?.playing,
-                onSelect: (id) => propsRef.current.onSelect({ type: 'edge', id }),
+                onSelect: selectEdge,
               },
               style: {
                 stroke: color,
@@ -275,8 +302,10 @@ export function useDiagram(props: DiagramProps) {
                 strokeDasharray: connection.kind === 'flow' ? undefined : '5 5',
               },
             }
+            previousEdges.current.set(connection.id, edge)
+            return edge
           }),
-    [result, portsReady, graph.edges, selection, props.execution],
+    [result, portsReady, graph.edges, selection, props.execution, selectEdge],
   )
 
   async function arrange(direction = graph.layout.direction) {
@@ -332,7 +361,7 @@ export function useDiagram(props: DiagramProps) {
     notify('Previous layout restored.')
   }
 
-  function onNodesChange(changes: NodeChange<VisualNode>[]) {
+  const onNodesChange = useCallback((changes: NodeChange<VisualNode>[]) => {
     setNodes((current) => {
       const next = applyNodeChanges(changes, current)
       for (const change of changes)
@@ -342,13 +371,16 @@ export function useDiagram(props: DiagramProps) {
         }
       return next
     })
-  }
+  }, [])
 
-  function onDragStop(node: VisualNode) {
-    const position = clearDrop(node.id, node.position, nodeState)
-    setNodes((current) => current.map((n) => (n.id === node.id ? { ...n, position } : n)))
-    propsRef.current.onLayout({ ...positions, [node.id]: position })
-  }
+  const onDragStop = useCallback(
+    (node: VisualNode) => {
+      const position = clearDrop(node.id, node.position, nodeState)
+      setNodes((current) => current.map((n) => (n.id === node.id ? { ...n, position } : n)))
+      propsRef.current.onLayout({ ...positions, [node.id]: position })
+    },
+    [nodeState, positions],
+  )
 
   return {
     canvasRef,

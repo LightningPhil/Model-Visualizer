@@ -5,7 +5,7 @@ import type { Positions, RoutingResult } from './routing'
 export type DiagramRequest = {
   id: number
   type: 'layout' | 'route'
-  graph: ModelGraph
+  graph?: ModelGraph
   positions?: Positions
   direction: 'RIGHT' | 'DOWN'
 }
@@ -29,6 +29,7 @@ export class DiagramWorker {
   private queuedRoute?: QueuedRoute
   private disposed = false
   private failure?: Error
+  private sentGraph?: ModelGraph
 
   constructor() {
     this.worker.onmessage = (event) => {
@@ -46,13 +47,22 @@ export class DiagramWorker {
     }
   }
 
-  private request<T>(payload: Omit<DiagramRequest, 'id'>): Promise<T> {
+  private request<T>(
+    payload: Omit<DiagramRequest, 'id' | 'graph'> & { graph: ModelGraph },
+  ): Promise<T> {
     if (this.failure) return Promise.reject(this.failure)
     if (this.disposed) return Promise.reject(new DOMException('Layout cancelled', 'AbortError'))
     return new Promise((resolve, reject) => {
       const id = ++this.nextId
       this.pending.set(id, { resolve: resolve as (value: never) => void, reject })
-      this.worker.postMessage({ ...payload, id })
+      const graph = payload.graph
+      const reuse =
+        payload.type === 'route' &&
+        this.sentGraph?.id === graph.id &&
+        this.sentGraph.nodes === graph.nodes &&
+        this.sentGraph.edges === graph.edges
+      this.worker.postMessage({ ...payload, graph: reuse ? undefined : graph, id })
+      this.sentGraph = graph
     })
   }
 

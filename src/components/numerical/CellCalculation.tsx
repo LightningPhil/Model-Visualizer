@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { NumericalTrace } from '../../model/numerics/engine'
 import { unravel, type NumericTensor } from '../../model/numerics/tensor'
 import { explainCell, valueLabel, type OperandCell } from '../../model/numerics/explain'
@@ -19,10 +19,16 @@ export function CellCalculation({
   sources: { id: string; title: string; url: string }[]
 }) {
   const [expanded, setExpanded] = useState(false)
-  if (!tensor.data.length) return null
-  const proof = explainCell(trace, tensor, index)
+  const proof = useMemo(
+    () => (tensor.data.length ? explainCell(trace, tensor, index) : undefined),
+    [trace, tensor, index],
+  )
+  if (!proof) return null
   const terms = expanded ? proof.terms : proof.terms.slice(0, 16)
-  const max = Math.max(1e-12, ...proof.terms.map((t) => Math.abs(t.result)).filter(Number.isFinite))
+  const max = proof.terms.reduce(
+    (n, term) => (Number.isFinite(term.result) ? Math.max(n, Math.abs(term.result)) : n),
+    1e-12,
+  )
   return (
     <section className="cell-calculation" aria-label="Selected cell calculation">
       <div className="numeric-section-heading">

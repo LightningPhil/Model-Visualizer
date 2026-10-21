@@ -872,6 +872,41 @@ h1 {
   );
   pointer-events: none;
 }
+.overview-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  display: none;
+}
+.overview-canvas canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.graph-canvas[data-renderer='overview'] .overview-canvas {
+  display: block;
+}
+.graph-canvas[data-renderer='overview'] .model-node,
+.graph-canvas[data-renderer='overview'] .edge-label,
+.graph-canvas[data-renderer='overview'] .react-flow__edge-path,
+.graph-canvas[data-renderer='overview'] .edge-annotation-leader,
+.graph-canvas[data-renderer='overview'] .execution-packet,
+.graph-canvas[data-renderer='overview'] .model-stage-outline {
+  /* React Flow's outer node/edge controls and transparent interaction paths
+     remain visible, focusable and draggable. Avoid compositing hundreds of
+     transparent layers: opacity:0 is dramatically slower on large maps. */
+  visibility: hidden;
+}
+.zoom-controls .overview-renderer-label {
+  display: none;
+  font: 400 7px var(--mono);
+}
+.graph-canvas[data-renderer='overview'] .overview-renderer-label {
+  display: block;
+  color: var(--cyan);
+  padding: 0 6px;
+}
 .canvas-caption {
   position: absolute;
   left: 22px;

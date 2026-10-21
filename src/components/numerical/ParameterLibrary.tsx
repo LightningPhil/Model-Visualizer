@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { NumericalTrace } from '../../model/numerics/engine'
 import { formatBytes } from '../../model/schema'
 import type { OperandCell } from '../../model/numerics/explain'
@@ -10,13 +10,15 @@ export function ParameterLibrary({
   trace: NumericalTrace
   onInspect: (cell: OperandCell) => void
 }) {
-  const [query, setQuery] = useState(''),
-    parameters = Object.values(trace.tensors).filter((t) => t.role === 'parameter'),
-    count = parameters.reduce(
+  const [query, setQuery] = useState('')
+  const { parameters, count, bytes } = useMemo(() => {
+    const parameters = Object.values(trace.tensors).filter((t) => t.role === 'parameter')
+    const count = parameters.reduce(
       (n, t) => n + (t.recipe.op === 'checkpoint' && t.recipe.tiedTo ? 0 : t.data.length),
       0,
-    ),
-    bytes = parameters.reduce((n, t) => n + t.data.byteLength, 0)
+    )
+    return { parameters, count, bytes: parameters.reduce((n, t) => n + t.data.byteLength, 0) }
+  }, [trace])
   return (
     <details className="parameter-library">
       <summary>

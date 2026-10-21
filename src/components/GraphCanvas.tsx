@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -10,7 +10,7 @@ import {
   BaseEdge,
   EdgeLabelRenderer,
   useReactFlow,
-  useViewport,
+  useStore,
   useUpdateNodeInternals,
   ViewportPortal,
 } from '@xyflow/react'
@@ -32,6 +32,7 @@ import { instanceOf } from '../model/whole-model'
 import type { Port, RoutedEdge } from '../model/routing'
 import { useDiagram } from './useDiagram'
 import { ComponentIcon } from './Icons'
+import { OverviewCanvas } from './overview/OverviewCanvas'
 
 export type Selection = { type: 'node' | 'edge'; id: string } | null
 type VisualData = {
@@ -70,7 +71,7 @@ const ModelNode = memo(function ModelNode({ data, selected }: NodeProps<VisualNo
     <div
       className={`model-node category-${component.category} ${selected ? 'is-selected' : ''} ${data.execution ? `execution-${data.execution}` : ''} ${instanceOf(component)?.optional ? 'optional-component' : ''}`}
       data-execution={data.execution}
-      data-tooltip-data-tooltip-detail={component.title}
+      data-tooltip-title={component.title}
       data-tooltip-detail={component.description}
     >
       {data.ports.map((port) => (
@@ -119,9 +120,10 @@ const ModelNode = memo(function ModelNode({ data, selected }: NodeProps<VisualNo
   )
 })
 
-function OperationEdge(props: EdgeProps<VisualEdge>) {
+const OperationEdge = memo(function OperationEdge(props: EdgeProps<VisualEdge>) {
   const route = props.data!.route
-  const path = roundedPath(route.points, 5)
+  const path = useMemo(() => roundedPath(route.points, 5), [route.points])
+  const points = useMemo(() => JSON.stringify(route.points), [route.points])
   const connection = props.data!.connection
   return (
     <>
@@ -131,7 +133,7 @@ function OperationEdge(props: EdgeProps<VisualEdge>) {
       <g
         className={`routed-connection ${props.data!.active ? 'connection-active' : ''}`}
         data-edge-id={props.id}
-        data-route-points={JSON.stringify(route.points)}
+        data-route-points={points}
       >
         <BaseEdge
           id={props.id}
@@ -166,7 +168,7 @@ function OperationEdge(props: EdgeProps<VisualEdge>) {
           }}
           data-label-edge={props.id}
           onClick={() => props.data!.onSelect(props.id)}
-          data-tooltip-data-tooltip-detail={connection.operation}
+          data-tooltip-title={connection.operation}
           data-tooltip-detail={connection.description}
         >
           {connection.label}
@@ -174,10 +176,71 @@ function OperationEdge(props: EdgeProps<VisualEdge>) {
       </EdgeLabelRenderer>
     </>
   )
-}
+})
 
 const nodeTypes = { component: ModelNode }
 const edgeTypes = { operation: OperationEdge }
+const minimapColors = { data: '#46b6cc', compute: '#747fc4', memory: '#a88de8', output: '#d3ae65' }
+const minimapColor = (node: VisualNode) => minimapColors[node.data.component.category]
+
+function AdaptiveBackground() {
+  // A fixed world-space grid becomes hundreds of thousands of subpixel dots
+  // at whole-model zoom. Keep its screen spacing in a useful, bounded range.
+  const level = useStore((state) => Math.max(0, Math.ceil(Math.log2(0.65 / state.transform[2]))))
+  const scale = 2 ** level
+  return (
+    <Background
+      variant={BackgroundVariant.Dots}
+      gap={24 * scale}
+      size={scale}
+      color="var(--grid)"
+    />
+  )
+}
+
+// Subscribe only this small control to zoom. Panning must never render the
+// diagram, rebuild node data, or traverse hundreds of port/stage definitions.
+function ZoomControls({ onFit }: { onFit: () => void }) {
+  const flow = useReactFlow()
+  const percent = useStore((state) => Math.round(state.transform[2] * 100))
+  return (
+    <div className="zoom-controls">
+      <button
+        aria-label="Zoom out"
+        data-tooltip-detail="Zoom out"
+        onClick={() => void flow.zoomOut({ duration: 200 })}
+      >
+        <Minus size={15} />
+      </button>
+      <span>{percent}%</span>
+      <small
+        className="overview-renderer-label"
+        data-tooltip-title="Fast overview rendering"
+        data-tooltip-detail="This distant view draws every component and validated route on a bounded canvas in a background worker. Zoom in for full text, tensor shapes and operation labels. The same nodes and links remain clickable and keyboard accessible."
+      >
+        Overview
+      </small>
+      <button
+        aria-label="Zoom in"
+        data-tooltip-detail="Zoom in"
+        onClick={() => void flow.zoomIn({ duration: 200 })}
+      >
+        <Plus size={15} />
+      </button>
+      <i />
+      <button aria-label="Fit graph" data-tooltip-detail="Fit graph" onClick={onFit}>
+        <Scan size={17} />
+      </button>
+      <button
+        aria-label="Actual size"
+        data-tooltip-detail="Actual size"
+        onClick={() => void flow.zoomTo(1, { duration: 300 })}
+      >
+        <Maximize2 size={14} />
+      </button>
+    </div>
+  )
+}
 
 export type LayoutSnapshot = { layout: ModelGraph['layout']; edges: ModelGraph['edges'] }
 
@@ -211,9 +274,22 @@ function Canvas(props: DiagramProps) {
       mounted.current = false
     }
   }, [])
-  const { graph, onSelect, onOpen } = props
+  const { graph } = props
   const flow = useReactFlow<VisualNode, VisualEdge>()
-  const viewport = useViewport()
+  const currentProps = useRef(props)
+  currentProps.current = props
+  const nodeClick = useCallback(
+    (_: unknown, node: VisualNode) => currentProps.current.onSelect({ type: 'node', id: node.id }),
+    [],
+  )
+  const nodeDoubleClick = useCallback((_: unknown, node: VisualNode) => {
+    if (node.data.component.childGraph) currentProps.current.onOpen(node.data.component.childGraph)
+  }, [])
+  const edgeClick = useCallback(
+    (_: unknown, edge: VisualEdge) => currentProps.current.onSelect({ type: 'edge', id: edge.id }),
+    [],
+  )
+  const paneClick = useCallback(() => currentProps.current.onSelect(null), [])
   const {
     canvasRef,
     nodes,
@@ -230,27 +306,61 @@ function Canvas(props: DiagramProps) {
     routing,
   } = useDiagram(props)
   const updateNodeInternals = useUpdateNodeInternals()
-  const portSignature = nodes
-    .map((n) => `${n.id}:${n.data.ports.map((p) => `${p.id}:${p.side}:${p.offset}`).join(',')}`)
-    .join('|')
+  const portSignature = useMemo(
+    () =>
+      nodes
+        .map((n) => `${n.id}:${n.data.ports.map((p) => `${p.id}:${p.side}:${p.offset}`).join(',')}`)
+        .join('|'),
+    [nodes],
+  )
   useEffect(() => {
     if (nodes.some((n) => n.data.ports.length)) updateNodeInternals(nodes.map((n) => n.id))
     // One measurement transaction for the entire graph, instead of a forced
     // synchronous render for every individual node in a large model.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [portSignature, updateNodeInternals])
-  const stageMap = new Map<string, { x: number; y: number; right: number; bottom: number }>()
-  for (const node of nodes) {
-    const stage = instanceOf(node.data.component)?.stage
-    if (!stage) continue
-    const current = stageMap.get(stage)
-    stageMap.set(stage, {
-      x: Math.min(current?.x ?? Infinity, node.position.x),
-      y: Math.min(current?.y ?? Infinity, node.position.y),
-      right: Math.max(current?.right ?? -Infinity, node.position.x + NODE_WIDTH),
-      bottom: Math.max(current?.bottom ?? -Infinity, node.position.y + NODE_HEIGHT),
-    })
-  }
+  const stageMap = useMemo(() => {
+    const stages = new Map<string, { x: number; y: number; right: number; bottom: number }>()
+    for (const node of nodes) {
+      const stage = instanceOf(node.data.component)?.stage
+      if (!stage) continue
+      const current = stages.get(stage)
+      stages.set(stage, {
+        x: Math.min(current?.x ?? Infinity, node.position.x),
+        y: Math.min(current?.y ?? Infinity, node.position.y),
+        right: Math.max(current?.right ?? -Infinity, node.position.x + NODE_WIDTH),
+        bottom: Math.max(current?.bottom ?? -Infinity, node.position.y + NODE_HEIGHT),
+      })
+    }
+    return stages
+  }, [nodes])
+  const stageBoxes = useMemo(
+    () =>
+      [...stageMap].map(
+        ([name, box]) =>
+          [
+            name,
+            {
+              x: box.x - 46,
+              y: box.y - 80,
+              width: box.right - box.x + 92,
+              height: box.bottom - box.y + 120,
+            },
+          ] as [string, { x: number; y: number; width: number; height: number }],
+      ),
+    [stageMap],
+  )
+  const dragStop = useCallback((_: unknown, node: VisualNode) => onDragStop(node), [onDragStop])
+  const moveEnd = useCallback(
+    (_: unknown, next: Viewport) => {
+      if (initialized.current && mounted.current) currentProps.current.onViewport(next)
+    },
+    [initialized],
+  )
+  const init = useCallback(() => {
+    initialized.current = true
+  }, [initialized])
+  const fit = useCallback(() => fitGraph(), [fitGraph])
   useEffect(() => {
     props.onReady?.(!busy && edges.length === graph.edges.length && Boolean(nodes.length))
   }, [busy, edges.length, graph.edges.length, nodes.length, props.onReady])
@@ -284,19 +394,13 @@ function Canvas(props: DiagramProps) {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
-        onNodeClick={(_, node) => onSelect({ type: 'node', id: node.id })}
-        onNodeDoubleClick={(_, node) =>
-          node.data.component.childGraph && onOpen(node.data.component.childGraph)
-        }
-        onEdgeClick={(_, edge) => onSelect({ type: 'edge', id: edge.id })}
-        onPaneClick={() => onSelect(null)}
-        onNodeDragStop={(_, node) => onDragStop(node)}
-        onMoveEnd={(_, next) => {
-          if (initialized.current && mounted.current) props.onViewport(next)
-        }}
-        onInit={() => {
-          initialized.current = true
-        }}
+        onNodeClick={nodeClick}
+        onNodeDoubleClick={nodeDoubleClick}
+        onEdgeClick={edgeClick}
+        onPaneClick={paneClick}
+        onNodeDragStop={dragStop}
+        onMoveEnd={moveEnd}
+        onInit={init}
         defaultViewport={graph.layout.viewport}
         minZoom={0.001}
         maxZoom={1.8}
@@ -308,7 +412,14 @@ function Canvas(props: DiagramProps) {
         zoomOnDoubleClick={false}
         selectionOnDrag={false}
       >
-        <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="var(--grid)" />
+        <AdaptiveBackground />
+        <OverviewCanvas
+          nodes={nodes}
+          edges={edges}
+          stages={stageBoxes}
+          parent={canvasRef}
+          theme={props.theme}
+        />
         {stageMap.size > 1 && (
           <ViewportPortal>
             {[...stageMap].map(([stage, box]) => (
@@ -330,11 +441,7 @@ function Canvas(props: DiagramProps) {
           pannable
           zoomable
           position="bottom-right"
-          nodeColor={(node) =>
-            ({ data: '#46b6cc', compute: '#747fc4', memory: '#a88de8', output: '#d3ae65' })[
-              (node.data as VisualData).component.category
-            ]
-          }
+          nodeColor={minimapColor}
           maskColor="var(--minimap-mask)"
         />
       </ReactFlow>
@@ -372,34 +479,7 @@ function Canvas(props: DiagramProps) {
           {graph.layout.direction === 'RIGHT' ? <ArrowRight size={15} /> : <ArrowDown size={15} />}
         </button>
       </div>
-      <div className="zoom-controls">
-        <button
-          aria-label="Zoom out"
-          data-tooltip-detail="Zoom out"
-          onClick={() => void flow.zoomOut({ duration: 200 })}
-        >
-          <Minus size={15} />
-        </button>
-        <span>{Math.round(viewport.zoom * 100)}%</span>
-        <button
-          aria-label="Zoom in"
-          data-tooltip-detail="Zoom in"
-          onClick={() => void flow.zoomIn({ duration: 200 })}
-        >
-          <Plus size={15} />
-        </button>
-        <i />
-        <button aria-label="Fit graph" data-tooltip-detail="Fit graph" onClick={() => fitGraph()}>
-          <Scan size={17} />
-        </button>
-        <button
-          aria-label="Actual size"
-          data-tooltip-detail="Actual size"
-          onClick={() => void flow.zoomTo(1, { duration: 300 })}
-        >
-          <Maximize2 size={14} />
-        </button>
-      </div>
+      <ZoomControls onFit={fit} />
       {routingError && (
         <div className="routing-message" role="status">
           {routingError}

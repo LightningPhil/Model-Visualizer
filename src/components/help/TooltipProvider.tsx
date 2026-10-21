@@ -136,6 +136,7 @@ export function TooltipProvider({ children }: { children: ReactNode }) {
     }
     const hide = () => {
       clearTimers()
+      mutation.disconnect()
       shown = false
       setVisible(undefined)
     }
@@ -155,6 +156,14 @@ export function TooltipProvider({ children }: { children: ReactNode }) {
       hide()
       candidate = target
       if (!preferences.enabled) return
+      // Only observe this control's ancestor chain, and only while help is
+      // pending/visible. Watching the whole graph subtree on every DOM edit
+      // would make tooltip housekeeping scale with the entire model map.
+      let ancestor = target.element.parentElement
+      while (ancestor) {
+        mutation.observe(ancestor, { childList: true, attributes: true, attributeFilter: ['open'] })
+        ancestor = ancestor.parentElement
+      }
       pending = setTimeout(() => {
         pending = undefined
         if (candidate !== target || !stillPresent(target)) return
@@ -247,7 +256,6 @@ export function TooltipProvider({ children }: { children: ReactNode }) {
       )
         reset()
     })
-    mutation.observe(document.body, { childList: true, subtree: true })
     cancelRef.current = reset
     document.addEventListener('pointerover', over, true)
     document.addEventListener('pointermove', move, true)

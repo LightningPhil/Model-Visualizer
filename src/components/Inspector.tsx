@@ -17,14 +17,15 @@ import {
   type Component,
   type Connection,
   type ModelDocument,
+  type ModelGraph,
   type Tensor,
 } from '../model/schema'
 import type { Selection } from './GraphCanvas'
-import { expandWholeModel } from '../model/whole-model'
 import { numericalExampleFor } from '../model/numerics/examples'
 
 type Props = {
   doc: ModelDocument
+  graph: ModelGraph
   selection: Selection
   symbols: Record<string, number>
   symbolic: boolean
@@ -75,6 +76,7 @@ function TensorCard({
 
 export function Inspector({
   doc,
+  graph,
   selection,
   symbols,
   symbolic,
@@ -85,10 +87,6 @@ export function Inspector({
   onNumerical,
 }: Props) {
   const [tab, setTab] = useState<'inspect' | 'notes'>('inspect')
-  const graph = expandWholeModel(
-    doc,
-    doc.graphs.find((g) => g.id === doc.ui.activeGraph)!,
-  )
   const component: Component | undefined =
     selection?.type === 'node' ? graph.nodes.find((n) => n.id === selection.id) : undefined
   const connection: Connection | undefined =

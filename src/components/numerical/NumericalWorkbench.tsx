@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type Dispatch,
+  type SetStateAction,
+} from 'react'
 import {
   ArrowLeft,
   ArrowRight,
@@ -19,14 +27,12 @@ import type { ModelDocument } from '../../model/schema'
 import { dimensions, formatBytes } from '../../model/schema'
 import { residentCount } from '../../model/attention'
 import {
-  executeTeachingModel,
   latestBinding,
   type NumericalFrame,
   type NumericalSettings,
   type NumericalTrace,
 } from '../../model/numerics/engine'
 import {
-  exportNumericalTrace,
   loadNumericalSession,
   numericalGraph,
   type NumericalSession,
@@ -44,6 +50,8 @@ import { HeadObservatory } from './HeadObservatory'
 import { ParameterLibrary } from './ParameterLibrary'
 import { resolveNumericalExample } from '../../model/numerics/examples'
 import { inspectConnection } from '../../model/numerics/inspection'
+import { prepareTraceExport } from '../../model/numerics/trace-export'
+import { useReferenceTrace } from './useReferenceTrace'
 import './numerical.css'
 
 const questions = [
@@ -124,10 +132,8 @@ function firstCell(
         : 0,
   }
 }
-function downloadTrace(trace: NumericalTrace) {
-  const url = URL.createObjectURL(
-      new Blob([exportNumericalTrace(trace)], { type: 'application/json' }),
-    ),
+function downloadTrace(trace: NumericalTrace, blob: Blob) {
+  const url = URL.createObjectURL(blob),
     a = document.createElement('a')
   a.href = url
   a.download = trace.checkpoint
@@ -137,16 +143,7 @@ function downloadTrace(trace: NumericalTrace) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export function NumericalWorkbench({
-  doc,
-  reference,
-  initialEntry,
-  onSave,
-  onClose,
-  onTheme,
-  notify: onNotify,
-  trained,
-}: {
+type WorkbenchProps = {
   doc: ModelDocument
   reference: ModelDocument
   initialEntry?: string
@@ -161,16 +158,76 @@ export function NumericalWorkbench({
     controls: ReactNode
     tokenizer: { piece: (id: number) => string; decode: (ids: number[]) => string }
   }
-}) {
+}
+
+export function NumericalWorkbench(props: WorkbenchProps) {
   const [initial] = useState(() =>
-      trained
-        ? { session: trained.session, writable: trained.writable }
-        : loadNumericalSession(doc),
-    ),
-    saveRef = useRef(onSave)
+    props.trained
+      ? { session: props.trained.session, writable: props.trained.writable }
+      : loadNumericalSession(props.doc),
+  )
+  const [session, setSession] = useState(initial.session)
+  const current = useReferenceTrace(props.trained ? undefined : session.settings)
+  const comparison = useReferenceTrace(props.trained ? undefined : session.pinned)
+  const trace = props.trained?.trace ?? current.trace
+  if (!trace)
+    return (
+      <Dialog title="The mathematics, alive." className="numerical-modal" onClose={props.onClose}>
+        <div className="numerical-worker-status" role="status">
+          {current.error ?? 'Computing the reference run in a background worker…'}
+          {current.error && (
+            <button className="button" onClick={current.retry}>
+              Retry run
+            </button>
+          )}
+        </div>
+      </Dialog>
+    )
+  return (
+    <NumericalWorkbenchView
+      {...props}
+      initial={initial}
+      session={session}
+      setSession={setSession}
+      trace={trace}
+      baseline={comparison.trace}
+      computing={current.busy || comparison.busy}
+      computationError={comparison.error}
+      retryComparison={comparison.retry}
+    />
+  )
+}
+
+function NumericalWorkbenchView({
+  doc,
+  reference,
+  initialEntry,
+  onSave,
+  onClose,
+  onTheme,
+  notify: onNotify,
+  trained,
+  initial,
+  session,
+  setSession,
+  trace,
+  baseline,
+  computing,
+  computationError,
+  retryComparison,
+}: WorkbenchProps & {
+  initial: { session: NumericalSession; writable: boolean }
+  session: NumericalSession
+  setSession: Dispatch<SetStateAction<NumericalSession>>
+  trace: NumericalTrace
+  baseline?: NumericalTrace
+  computing: boolean
+  computationError?: string
+  retryComparison: () => void
+}) {
+  const saveRef = useRef(onSave)
   saveRef.current = onSave
-  const [session, setSession] = useState(initial.session),
-    [cursor, setCursor] = useState(0),
+  const [cursor, setCursor] = useState(0),
     [playing, setPlaying] = useState(false),
     [delay, setDelay] = useState(700),
     [follow, setFollow] = useState(true)
@@ -194,26 +251,22 @@ export function NumericalWorkbench({
     const timer = setTimeout(() => setNotice(''), 5000)
     return () => clearTimeout(timer)
   }, [notice])
-  const trace = useMemo(
-    () => trained?.trace ?? executeTeachingModel(session.settings),
-    [session.settings, trained?.trace],
-  )
   const previousTrace = useRef(trace),
     initialCameraDone = useRef(false)
-  const baseline = useMemo(
-    () => (!trained && session.pinned ? executeTeachingModel(session.pinned) : undefined),
-    [session.pinned, Boolean(trained)],
-  )
   const frame = trace.frames[Math.min(cursor, trace.frames.length - 1)]
-  const graph = useMemo(
+  const semanticGraph = useMemo(
     () =>
       numericalGraph(
         reference,
-        session.settings,
-        session.layout,
+        trace.settings,
+        { direction: 'RIGHT', positions: {} },
         trained ? trace.config : undefined,
       ),
-    [reference, session.settings, session.layout, trained ? trace.config : undefined],
+    [reference, trace.settings, trained ? trace.config : undefined],
+  )
+  const graph = useMemo(
+    () => ({ ...semanticGraph, layout: session.layout }),
+    [semanticGraph, session.layout],
   )
   const completed = useMemo(
     () => new Set(trace.frames.slice(0, cursor).flatMap((f) => f.nodeIds)),
@@ -228,7 +281,10 @@ export function NumericalWorkbench({
     selection?.type === 'node' ? graph.nodes.find((n) => n.id === selection.id) : undefined
   const selectedEdge =
     selection?.type === 'edge' ? graph.edges.find((e) => e.id === selection.id) : undefined
-  const edgeInspection = selectedEdge ? inspectConnection(trace, selectedEdge, cursor) : undefined
+  const edgeInspection = useMemo(
+    () => (selectedEdge ? inspectConnection(trace, selectedEdge, cursor) : undefined),
+    [trace, selectedEdge, cursor],
+  )
   const binding =
     selection?.type === 'node'
       ? latestBinding(trace, selection.id, cursor)
@@ -251,13 +307,43 @@ export function NumericalWorkbench({
   const pending = Boolean(selection && !binding)
   const S = frame.queryPositions.at(-1)! + 1,
     P = residentCount(trace.config, Math.max(0, S - frame.queryLength))
-  const symbols = {
-    ...dimensions(trace.config),
-    T: frame.queryLength,
-    S,
-    R: residentCount(trace.config, S),
-    P,
-    U: P + frame.queryLength,
+  const symbols = useMemo(
+    () => ({
+      ...dimensions(trace.config),
+      T: frame.queryLength,
+      S,
+      R: residentCount(trace.config, S),
+      P,
+      U: P + frame.queryLength,
+    }),
+    [trace.config, frame.queryLength, S, P],
+  )
+  const [exporting, setExporting] = useState(false)
+  const exportJob = useRef<ReturnType<typeof prepareTraceExport> | undefined>(undefined)
+  useEffect(
+    () => () => {
+      exportJob.current?.cancel()
+      exportJob.current = undefined
+    },
+    [],
+  )
+  async function exportTrace() {
+    if (exportJob.current) return
+    setExporting(true)
+    let job: ReturnType<typeof prepareTraceExport> | undefined
+    try {
+      job = prepareTraceExport(trace)
+      exportJob.current = job
+      const blob = await job.promise
+      downloadTrace(trace, blob)
+    } catch (error) {
+      if (error instanceof Error && error.name !== 'AbortError') notify(error.message)
+    } finally {
+      if (exportJob.current === job) {
+        exportJob.current = undefined
+        setExporting(false)
+      }
+    }
   }
   const update = (change: Partial<NumericalSession>) => setSession((s) => ({ ...s, ...change }))
   const changeSettings = (change: Partial<NumericalSettings>) => {
@@ -319,6 +405,10 @@ export function NumericalWorkbench({
   }, [initialEntry])
   useEffect(() => {
     if (!playing) return
+    if (computing) {
+      setPlaying(false)
+      return
+    }
     if (cursor >= trace.frames.length - 1) {
       setPlaying(false)
       return
@@ -327,7 +417,7 @@ export function NumericalWorkbench({
     return () => clearTimeout(timer)
     // The playback cursor owns the timer. Inspection deliberately pauses it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, cursor, trace, delay])
+  }, [playing, cursor, trace, delay, computing])
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (
@@ -477,8 +567,8 @@ export function NumericalWorkbench({
           Hkv {trace.config.nKvHeads} · Dh {trace.config.headDim} · F {trace.config.ffnDim} · V{' '}
           {trace.config.vocabSize}
         </span>
-        <button onClick={() => downloadTrace(trace)}>
-          <Download size={13} /> Export trace
+        <button disabled={exporting || computing} onClick={() => void exportTrace()}>
+          <Download size={13} /> {exporting ? 'Preparing export…' : 'Export trace'}
         </button>
         <TooltipSettingsButton />
         <button aria-label="Toggle numerical theme" onClick={onTheme}>
@@ -495,6 +585,17 @@ export function NumericalWorkbench({
           <Settings2 size={14} /> Run setup
         </button>
       </div>
+      {(computing || computationError) && (
+        <div className="numerical-worker-status" role="status" data-testid="numerical-computing">
+          {computationError ??
+            'Computing the updated run in background workers. The microscope still shows the previous completed run.'}
+          {computationError && (
+            <button className="button" onClick={retryComparison}>
+              Retry baseline
+            </button>
+          )}
+        </div>
+      )}
       {!initial.writable && (
         <p className="numerical-version-note">
           An unsupported saved lab session is preserved. This temporary session will not overwrite
@@ -525,7 +626,7 @@ export function NumericalWorkbench({
           {setup && trained ? (
             <div className="numerical-setup">
               {trained.controls}
-              <button className="button" onClick={() => setSetup(false)}>
+              <button className="button" disabled={computing} onClick={() => setSetup(false)}>
                 Explore the run <ArrowRight size={13} />
               </button>
             </div>
@@ -603,10 +704,10 @@ export function NumericalWorkbench({
                 />
               </label>
               <CachePolicyControls
-                config={trace.config}
+                config={{ ...trace.config, kvCache: session.settings.kvCache }}
                 onChange={(kvCache) => changeSettings({ kvCache })}
               />
-              <button className="button" onClick={() => setSetup(false)}>
+              <button className="button" disabled={computing} onClick={() => setSetup(false)}>
                 Explore the run <ArrowRight size={13} />
               </button>
               <ParameterLibrary trace={trace} onInspect={inspectParameter} />
@@ -646,7 +747,7 @@ export function NumericalWorkbench({
                     ]
                   : chapters
                 ).map(([title, node]) => (
-                  <button key={node} onClick={() => jump(node)}>
+                  <button key={node} disabled={computing} onClick={() => jump(node)}>
                     <span />
                     {title}
                     <ChevronRight size={12} />
@@ -663,6 +764,7 @@ export function NumericalWorkbench({
                       trained && q.checkpointDescription ? q.checkpointDescription : q.description
                     }
                     disabled={
+                      computing ||
                       (q.multiple && trace.settings.inputIds.length < 2) ||
                       q.call >= new Set(trace.frames.map((f) => f.call)).size
                     }
@@ -868,7 +970,7 @@ export function NumericalWorkbench({
               </button>
             ))}
           </div>
-          <div className="numerical-canvas">
+          <div className="numerical-canvas" inert={computing}>
             <GraphCanvas
               graph={graph}
               symbols={symbols}
@@ -880,19 +982,33 @@ export function NumericalWorkbench({
               onOpen={() => {}}
               onReady={setReady}
               onLayout={(positions, direction, reset) =>
-                setSession((s) => ({
-                  ...s,
-                  layout: {
-                    ...s.layout,
-                    positions,
-                    direction: direction ?? s.layout.direction,
-                    ...(reset ? { viewport: undefined } : {}),
-                  },
-                }))
+                setSession((s) =>
+                  s.settings.attention !== trace.settings.attention
+                    ? s
+                    : {
+                        ...s,
+                        layout: {
+                          ...s.layout,
+                          positions,
+                          direction: direction ?? s.layout.direction,
+                          ...(reset ? { viewport: undefined } : {}),
+                        },
+                      },
+                )
               }
-              onRestore={(snapshot) => update({ layout: snapshot.layout })}
+              onRestore={(snapshot) =>
+                setSession((s) =>
+                  s.settings.attention !== trace.settings.attention
+                    ? s
+                    : { ...s, layout: snapshot.layout },
+                )
+              }
               onViewport={(viewport) =>
-                setSession((s) => ({ ...s, layout: { ...s.layout, viewport } }))
+                setSession((s) =>
+                  s.settings.attention !== trace.settings.attention
+                    ? s
+                    : { ...s, layout: { ...s.layout, viewport } },
+                )
               }
               notify={notify}
               execution={{ active: frame.nodeIds, completed, revision: cursor, playing }}
@@ -906,14 +1022,14 @@ export function NumericalWorkbench({
               </button>
               <button
                 aria-label="Previous numerical operation"
-                disabled={cursor === 0}
+                disabled={computing || cursor === 0}
                 onClick={() => seek(cursor - 1)}
               >
                 <ChevronLeft size={18} />
               </button>
               <button
                 className="button numerical-play"
-                disabled={!ready || cursor === trace.frames.length - 1}
+                disabled={computing || !ready || cursor === trace.frames.length - 1}
                 onClick={() => setPlaying(!playing)}
               >
                 {playing ? <Pause size={15} /> : <Play size={15} />}{' '}
@@ -921,7 +1037,7 @@ export function NumericalWorkbench({
               </button>
               <button
                 aria-label="Next numerical operation"
-                disabled={cursor === trace.frames.length - 1}
+                disabled={computing || cursor === trace.frames.length - 1}
                 onClick={() => seek(cursor + 1)}
               >
                 <ChevronRight size={18} />

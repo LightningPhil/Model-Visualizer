@@ -1,0 +1,137 @@
+{
+  "date": "2026-10-21",
+  "baselineCommit": "f82534374f1308e9dad2c96b7dd287c72ee2d757",
+  "workload": "420 components, 610 links; whole-model-heads; 1440x960; 120 middle-button moves per run",
+  "method": "Production preview on 127.0.0.1:5201, isolated Chrome context, three runs, CPU profile during first run. Browser injection pacing is included. No concurrent tests.",
+  "before": {
+    "label": "before",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+    "nodes": 420,
+    "edges": 610,
+    "runs": [
+      {
+        "elapsedMs": 9286.082900000001,
+        "scriptMs": 5566.624,
+        "taskMs": 8667.748000000001,
+        "layoutMs": 12.123,
+        "frames": 129,
+        "frameP50": 83.19999999999891,
+        "frameP95": 100,
+        "longTaskCount": 120,
+        "longTaskMs": 8049,
+        "nodeMutations": 0
+      },
+      {
+        "elapsedMs": 8689.4672,
+        "scriptMs": 5243.606,
+        "taskMs": 7970.104999999999,
+        "layoutMs": 11.104999999999999,
+        "frames": 122,
+        "frameP50": 66.79999999999927,
+        "frameP95": 83.5,
+        "longTaskCount": 117,
+        "longTaskMs": 7464,
+        "nodeMutations": 0
+      },
+      {
+        "elapsedMs": 8704.0521,
+        "scriptMs": 5230.0790000000015,
+        "taskMs": 8013.6399999999985,
+        "layoutMs": 11.286000000000005,
+        "frames": 121,
+        "frameP50": 66.70000000000437,
+        "frameP95": 83.5,
+        "longTaskCount": 118,
+        "longTaskMs": 7517,
+        "nodeMutations": 0
+      }
+    ],
+    "errors": []
+  },
+  "after": {
+    "label": "final",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+    "renderer": "overview",
+    "nodes": 420,
+    "edges": 610,
+    "gpu": {
+      "devices": [
+        {
+          "vendorId": 4318,
+          "deviceId": 9398,
+          "subSysId": 174723112,
+          "revision": 161,
+          "vendorString": "",
+          "deviceString": "NVIDIA RTX A5000 Laptop GPU",
+          "driverVendor": "NVIDIA",
+          "driverVersion": "32.0.15.8195"
+        },
+        {
+          "vendorId": 5140,
+          "deviceId": 140,
+          "subSysId": 0,
+          "revision": 0,
+          "vendorString": "",
+          "deviceString": "Microsoft Basic Render Driver",
+          "driverVendor": "",
+          "driverVersion": "10.0.26100.9711"
+        }
+      ],
+      "featureStatus": {
+        "2d_canvas": "enabled",
+        "direct_rendering_display_compositor": "disabled_off_ok",
+        "gpu_compositing": "enabled",
+        "multiple_raster_threads": "enabled_on",
+        "opengl": "enabled_on",
+        "rasterization": "enabled",
+        "raw_draw": "disabled_off_ok",
+        "skia_graphite": "disabled_off",
+        "trees_in_viz": "disabled_off",
+        "video_decode": "enabled",
+        "video_encode": "enabled",
+        "webgl": "enabled",
+        "webgpu": "enabled",
+        "webnn": "disabled_off"
+      }
+    },
+    "runs": [
+      {
+        "elapsedMs": 3495.5364999999993,
+        "scriptMs": 691.1740000000001,
+        "taskMs": 1730.8809999999999,
+        "layoutMs": 13.712,
+        "frames": 128,
+        "frameP50": 17,
+        "frameP95": 50.20000000000073,
+        "longTaskCount": 0,
+        "longTaskMs": 0,
+        "nodeMutations": 0
+      },
+      {
+        "elapsedMs": 3509.5252,
+        "scriptMs": 647.4499999999999,
+        "taskMs": 1567.1480000000001,
+        "layoutMs": 12.381000000000002,
+        "frames": 122,
+        "frameP50": 16.80000000000109,
+        "frameP95": 66.5,
+        "longTaskCount": 0,
+        "longTaskMs": 0,
+        "nodeMutations": 0
+      },
+      {
+        "elapsedMs": 3436.5911000000015,
+        "scriptMs": 638.128,
+        "taskMs": 1579.2289999999998,
+        "layoutMs": 12.258999999999995,
+        "frames": 122,
+        "frameP50": 16.899999999999636,
+        "frameP95": 50.29999999999927,
+        "longTaskCount": 0,
+        "longTaskMs": 0,
+        "nodeMutations": 0
+      }
+    ],
+    "errors": []
+  }
+}

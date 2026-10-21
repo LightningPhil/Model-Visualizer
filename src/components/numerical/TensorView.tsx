@@ -4,6 +4,7 @@ import {
   offset,
   unravel,
   tensorComparisonIssue,
+  finiteMagnitude,
   type NumericTensor,
 } from '../../model/numerics/tensor'
 import { valueLabel } from '../../model/numerics/explain'
@@ -21,7 +22,10 @@ export function TensorView({
 }) {
   const [transposed, setTransposed] = useState(false)
   const [delta, setDelta] = useState(false)
-  const issue = comparison ? tensorComparisonIssue(tensor, comparison) : undefined,
+  const issue = useMemo(
+      () => (comparison ? tensorComparisonIssue(tensor, comparison) : undefined),
+      [tensor, comparison],
+    ),
     compatible = Boolean(comparison && !issue)
   const rank = tensor.shape.length,
     indices = unravel(Math.min(index, Math.max(0, tensor.data.length - 1)), tensor.shape)
@@ -33,10 +37,7 @@ export function TensorView({
     col = indices[colAxis]
   const pageRow = Math.floor(row / 8) * 8,
     pageCol = Math.floor(col / 8) * 8
-  const scale = useMemo(
-    () => Math.max(1e-12, ...Array.from(tensor.data).filter(Number.isFinite).map(Math.abs)),
-    [tensor],
-  )
+  const scale = useMemo(() => finiteMagnitude(tensor.data), [tensor])
   const locate = (r: number, c: number) => {
     const next = [...indices]
     if (rowAxis >= 0) next[rowAxis] = r

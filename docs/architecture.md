@@ -8,6 +8,7 @@
 | `src/model/schema.ts`                                    | Runtime schema, reference validation, restricted dimension parser, cache accounting and types                 |
 | `src/model/tokenizer.ts`                                 | Tokenizer adapter interface, real demonstration byte-BPE, labelled synthetic attention probabilities          |
 | `src/model/whole-model.ts`                               | Deterministic whole-model expansion from authored recipes and source templates                                |
+| `src/model/graph-compiler.ts`                            | Runtime semantic instance cache, invalidated by authored content or configuration changes                     |
 | `src/model/group-layout.ts`                              | Stage-local layout/routing plus fixed-obstacle inter-stage routing for expanded models                        |
 | `src/model/simulation.ts`                                | Renderer-neutral graphical execution trace, causal verification scenarios and KV-state accounting             |
 | `src/model/numerics/`                                    | Local numerical reference operations, actual tensors and scalar provenance; independent laboratory sessions   |
@@ -19,11 +20,15 @@
 | `src/model/diagram.worker.ts`, `layout-client.ts`        | Worker protocol, WASM initialization and coalescing of drag requests                                          |
 | `src/model/storage.ts`                                   | Transactional import, export and browser-local persistence                                                    |
 | `src/components/GraphCanvas.tsx`                         | React Flow rendering, node dragging, edge inspection, layout and viewport controls                            |
+| `src/components/overview/`                               | Bounded OffscreenCanvas worker projection for distant views; SVG interaction and detail remain available      |
+| `src/model/numerics/trace.worker.ts`                     | Background untrained runs, baseline captures and trace JSON preparation                                       |
 | `src/components/Inspector.tsx`                           | Explanations, tensors, equations, primary references and notebook                                             |
 | `src/components/Labs.tsx`                                | BPE trace, head sharing/heatmap, dimensioned KV slice, illustrative n-gram addresses and MTP target alignment |
 | `src/App.tsx`                                            | Workspace state, navigation, configuration and document lifecycle                                             |
 
 React Flow is the viewport/interaction layer; it does not own the portable document contract. ELK handles graph arrangement; libavoid handles orthogonal routing. Both execute outside the rendering thread. KaTeX renders untrusted equations with trust disabled and bounded expansion. Fonts and the routing WASM are bundled, and the running app makes no inference or font-service requests.
+
+Camera subscriptions are isolated from graph rendering. Large distant maps use a bounded canvas worker backed by the same validated scene; close inspection and fallback use SVG. The decorative grid maintains useful screen spacing at small zooms. Semantic instances, unchanged node data and measured ports survive ordinary camera/layout edits. Reference runs, baselines and trace serialization also use workers, while numerical arithmetic and provenance remain unchanged. See [performance measurements, rendering boundaries and reproduction commands](performance.md).
 
 ## Document lifecycle
 

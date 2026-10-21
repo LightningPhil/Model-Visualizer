@@ -56,6 +56,16 @@ export type NumericTensor = {
   createdAt: number
 }
 export const elements = (shape: number[]) => shape.reduce((a, b) => a * b, 1)
+/** One streaming pass; no boxed copy, temporary arrays or argument-count limit.
+ * Mask sentinels do not contribute to the visual colour scale. */
+export function finiteMagnitude(data: ArrayLike<number>) {
+  let max = 1e-12
+  for (let i = 0; i < data.length; i++) {
+    const value = data[i]
+    if (Number.isFinite(value)) max = Math.max(max, Math.abs(value))
+  }
+  return max
+}
 /** Subtract only semantically aligned values. Infinities encode exclusion, so
  * changed visibility must be compared through finite probabilities instead. */
 export function tensorComparisonIssue(current: NumericTensor, baseline: NumericTensor) {
