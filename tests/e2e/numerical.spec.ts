@@ -19,6 +19,50 @@ async function openLab(page: Page) {
   await expect(lab.locator('.routing-message')).toHaveCount(0)
   return lab
 }
+
+test('numerical playback leaves the camera free and follows at the selected zoom', async ({
+  page,
+}) => {
+  test.setTimeout(90000)
+  const lab = await openLab(page),
+    follow = lab.getByRole('checkbox', { name: 'Follow flow', exact: true }),
+    viewport = lab.locator('.react-flow__viewport'),
+    camera = () =>
+      viewport.evaluate((element) => {
+        const matrix = new DOMMatrix(getComputedStyle(element).transform)
+        return { x: matrix.e, y: matrix.f, zoom: matrix.a }
+      })
+  await expect(follow).not.toBeChecked()
+  await lab.getByRole('button', { name: 'Fit graph', exact: true }).click()
+  await page.waitForTimeout(400)
+  const wholeView = await camera()
+  await lab.getByRole('button', { name: 'Next numerical operation' }).click()
+  await lab.getByLabel('Numerical execution timeline').fill('30')
+  await lab.getByLabel('Numerical playback speed').selectOption('250')
+  await lab.getByRole('button', { name: 'Play', exact: true }).click()
+  await expect
+    .poll(() => lab.getByLabel('Numerical execution timeline').inputValue())
+    .not.toBe('30')
+  await lab.getByRole('button', { name: 'Pause', exact: true }).click()
+  expect(await camera()).toEqual(wholeView)
+  await follow.check()
+  await lab.getByRole('button', { name: 'Next numerical operation' }).click()
+  await page.waitForTimeout(400)
+  expect((await camera()).zoom).toBeCloseTo(wholeView.zoom, 6)
+  await lab.getByRole('button', { name: 'Actual size', exact: true }).click()
+  await expect.poll(async () => (await camera()).zoom).toBe(1)
+  await lab.getByRole('button', { name: 'Next numerical operation' }).click()
+  await page.waitForTimeout(400)
+  expect((await camera()).zoom).toBe(1)
+  await follow.uncheck()
+  const beforeCapture = await camera()
+  await lab.getByLabel('Open numerical run setup').click()
+  await lab.getByLabel('Numerical parameter seed').fill('73')
+  await lab.getByRole('button', { name: 'Explore the run' }).click()
+  await expect(lab.getByRole('button', { name: 'Play', exact: true })).toBeEnabled()
+  await page.waitForTimeout(400)
+  expect(await camera()).toEqual(beforeCapture)
+})
 test('changed visibility blocks masked-score subtraction and compares finite attention probabilities', async ({
   page,
 }) => {

@@ -177,6 +177,23 @@ function draw(now: number) {
       ctx.fillText(node.title, node.x + 25, node.y + 62, node.width - 35)
     }
   }
+  // A world-space border can become smaller than one pixel on a complete
+  // model. Mark activity in screen space, above the map, without zooming it.
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0)
+  for (const node of scene.nodes) {
+    if (node.execution !== 'active' || !visible(node)) continue
+    const width = Math.max(8, node.width * z + 6),
+      height = Math.max(8, node.height * z + 6),
+      x = (node.x + node.width / 2) * z + view.x - width / 2,
+      y = (node.y + node.height / 2) * z + view.y - height / 2
+    rect({ x, y, width, height }, 3)
+    ctx.strokeStyle = colors.panel
+    ctx.lineWidth = 4
+    ctx.stroke()
+    ctx.strokeStyle = colors.cyan
+    ctx.lineWidth = 2
+    ctx.stroke()
+  }
   self.postMessage({ revision, edgeCount: scene.edges.length })
   if (scene.edges.some((edge) => edge.active && edge.playing)) schedule()
 }

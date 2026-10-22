@@ -243,6 +243,7 @@ function ZoomControls({ onFit }: { onFit: () => void }) {
 }
 
 export type LayoutSnapshot = { layout: ModelGraph['layout']; edges: ModelGraph['edges'] }
+export type CameraFocus = { id: string; revision: number; preserveZoom?: boolean }
 
 export type DiagramProps = {
   graph: ModelGraph
@@ -262,7 +263,7 @@ export type DiagramProps = {
   onViewport: (viewport: Viewport) => void
   notify: (message: string) => void
   execution?: { active: string[]; completed: Set<string>; revision: number; playing: boolean }
-  focus?: { id: string; revision: number }
+  focus?: CameraFocus
   onReady?: (ready: boolean) => void
 }
 
@@ -364,27 +365,30 @@ function Canvas(props: DiagramProps) {
   useEffect(() => {
     props.onReady?.(!busy && edges.length === graph.edges.length && Boolean(nodes.length))
   }, [busy, edges.length, graph.edges.length, nodes.length, props.onReady])
-  const consumedFocus = useRef<{ id: string; revision: number } | undefined>(undefined)
+  const consumedFocus = useRef<CameraFocus | undefined>(undefined)
   useEffect(() => {
     if (
       !props.focus ||
       busy ||
       !edges.length ||
       (consumedFocus.current?.id === props.focus.id &&
-        consumedFocus.current.revision === props.focus.revision)
+        consumedFocus.current.revision === props.focus.revision &&
+        consumedFocus.current.preserveZoom === props.focus.preserveZoom)
     )
       return
     const node = nodes.find((n) => n.id === props.focus!.id)
     if (node) {
       consumedFocus.current = props.focus
       void flow.setCenter(node.position.x + NODE_WIDTH / 2, node.position.y + NODE_HEIGHT / 2, {
-        zoom: Math.max(0.55, Math.min(0.9, flow.getZoom())),
+        zoom: props.focus.preserveZoom
+          ? flow.getZoom()
+          : Math.max(0.55, Math.min(0.9, flow.getZoom())),
         duration: props.execution?.playing ? 180 : 350,
       })
     }
     // Routing and focus revisions matter; ordinary selection/viewport changes do not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.focus?.id, props.focus?.revision, busy, edges.length])
+  }, [props.focus?.id, props.focus?.revision, props.focus?.preserveZoom, busy, edges.length])
 
   return (
     <div ref={canvasRef} className="graph-canvas" data-testid="graph-canvas">

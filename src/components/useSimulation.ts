@@ -13,7 +13,7 @@ export function useSimulation(config: ModelConfig, enabled: boolean, splitHeads 
     [playing, setPlaying] = useState(false)
   const [detail, setDetail] = useState<'operation' | 'stage'>('stage')
   const [delay, setDelay] = useState(650),
-    [follow, setFollow] = useState(true)
+    [follow, setFollow] = useState(false)
   const result = useMemo(() => {
     if (!enabled) return { trace: null, error: '' }
     try {

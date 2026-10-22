@@ -815,7 +815,7 @@ export default function App() {
             }
             focus={
               simulating && sim.follow && simulationFrame
-                ? { id: simulationFrame.nodeIds[0], revision: sim.cursor }
+                ? { id: simulationFrame.nodeIds[0], revision: sim.cursor, preserveZoom: true }
                 : focus
             }
             onReady={simulating ? setDiagramReady : undefined}

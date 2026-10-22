@@ -40,7 +40,7 @@ import {
 import { unravel, type NumericTensor } from '../../model/numerics/tensor'
 import { valueLabel, type OperandCell } from '../../model/numerics/explain'
 import { Dialog } from '../Dialog'
-import { GraphCanvas, type Selection } from '../GraphCanvas'
+import { GraphCanvas, type CameraFocus, type Selection } from '../GraphCanvas'
 import { MathBlock } from '../Math'
 import { CachePolicyControls } from '../CachePolicyControls'
 import { TooltipSettingsButton } from '../help/TooltipProvider'
@@ -230,11 +230,11 @@ function NumericalWorkbenchView({
   const [cursor, setCursor] = useState(0),
     [playing, setPlaying] = useState(false),
     [delay, setDelay] = useState(700),
-    [follow, setFollow] = useState(true)
+    [follow, setFollow] = useState(false)
   const [selection, setSelection] = useState<Selection>(null),
     [cell, setCell] = useState<OperandCell>(),
     [back, setBack] = useState<OperandCell[]>([])
-  const [focus, setFocus] = useState<{ id: string; revision: number }>(),
+  const [focus, setFocus] = useState<CameraFocus>(),
     [ready, setReady] = useState(false),
     [setup, setSetup] = useState(false),
     [stepFilter, setStepFilter] = useState(''),
@@ -373,7 +373,7 @@ function NumericalWorkbenchView({
     setLesson('')
     if (previousTrace.current !== trace) {
       previousTrace.current = trace
-      setFocus({ id: 'tokens.ids', revision: Date.now() })
+      setFocus(undefined)
     }
   }, [trace])
   useEffect(() => {
@@ -383,15 +383,12 @@ function NumericalWorkbenchView({
     }
     if (initialCameraDone.current) return
     initialCameraDone.current = true
-    const requested =
-      focus ?? (!initial.session.layout.viewport ? { id: 'tokens.ids', revision: 0 } : undefined)
+    const requested = focus
     if (requested) {
-      const camera = requestAnimationFrame(() =>
-        setFocus({ id: requested.id, revision: Date.now() }),
-      )
+      const camera = requestAnimationFrame(() => setFocus({ ...requested, revision: Date.now() }))
       return () => cancelAnimationFrame(camera)
     }
-  }, [ready, initial, focus])
+  }, [ready, focus])
   useEffect(() => {
     if (!initialEntry) return
     jump(
@@ -454,7 +451,7 @@ function NumericalWorkbenchView({
     setCell(firstCell(trace, f))
     setBack([])
     setLesson('')
-    if (follow) setFocus({ id: f.nodeIds[0], revision: Date.now() })
+    if (follow) setFocus({ id: f.nodeIds[0], revision: Date.now(), preserveZoom: true })
   }
   function inspect(next: OperandCell, push = true) {
     setPlaying(false)
@@ -476,7 +473,8 @@ function NumericalWorkbenchView({
     )
     inspect(next, false)
     const owner = trace.frames.find((f) => f.inputs.includes(next.tensor))
-    if (follow && owner) setFocus({ id: owner.nodeIds[0], revision: Date.now() })
+    if (follow && owner)
+      setFocus({ id: owner.nodeIds[0], revision: Date.now(), preserveZoom: true })
   }
   function select(selected: Selection) {
     setPlaying(false)
@@ -1075,7 +1073,10 @@ function NumericalWorkbenchView({
               onChange={(e) => seek(Number(e.target.value))}
             />
             <div>
-              <small>Click any node or connection to inspect its available tensors.</small>
+              <small>
+                Pan and zoom freely; Follow flow keeps your zoom. Click a node or connection to
+                inspect its tensors.
+              </small>
               {!trained && (
                 <button
                   onClick={() => {

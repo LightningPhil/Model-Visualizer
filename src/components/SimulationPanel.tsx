@@ -233,12 +233,16 @@ export function SimulationPanel({
             </div>
             <label className="simulation-follow">
               <input
+                aria-describedby="simulation-camera-help"
                 type="checkbox"
                 checked={sim.follow}
                 onChange={(e) => sim.setFollow(e.target.checked)}
               />
               Follow the active operation
             </label>
+            <p className="playback-camera-help" id="simulation-camera-help">
+              Pan and zoom freely during playback. Follow pans at your chosen zoom.
+            </p>
             <div className="execution-card" aria-live="polite">
               <div>
                 <span className="execution-phase">{frame?.phase}</span>

@@ -233,8 +233,8 @@ export const helpCatalog: Record<string, HelpContent> = {
   ),
   'Follow the active operation': entry(
     'Follow the active operation',
-    'Let the camera center on the current graphical operation during playback or stepping. Turn this off to inspect a fixed area while packets advance.',
-    'Camera following does not move graph nodes or alter a saved layout.',
+    'Optionally pan the camera to the current graphical operation during playback or stepping, keeping your exact zoom. Leave this off to watch packets advance across the whole model or any fixed region.',
+    'Off by default. Playback, stepping and scrubbing work at every zoom level. You can pan, zoom or Fit graph while the simulation runs; following never forces a close-up or moves graph nodes.',
   ),
   'Numerical parameter seed': entry(
     'Untrained parameter seed',
@@ -607,8 +607,8 @@ for (const [names, content] of actions) for (const name of names) helpCatalog[na
 Object.assign(helpCatalog, {
   'Follow flow': entry(
     'Follow the recorded flow',
-    'Center the numerical canvas on the currently revealed operation as playback advances. Turn this off to keep a particular region in view while the recorded computation progresses.',
-    'Only the camera follows the trace. Captured arrays, tensor values and saved node positions are unchanged.',
+    'Optionally pan the numerical or trained-model canvas to the currently revealed operation, preserving your exact zoom. Leave this off to watch the complete model or a fixed region while computation progresses.',
+    'Off by default. Play, step and scrub at any zoom level. Explicit navigation such as a question or chapter can still bring its component into close view. Captured arrays, tensor values and node positions are unchanged.',
   ),
   Notebook: helpCatalog['Workspace notes'],
   'Open numerical lab notes': helpCatalog['Numerical laboratory notes'],

@@ -3770,10 +3770,16 @@ h1 {
   gap: 7px;
   font-size: 10px;
   color: var(--muted);
-  margin: 15px 0 20px;
+  margin: 15px 0 7px;
 }
 .simulation-follow input {
   accent-color: var(--cyan);
+}
+.playback-camera-help {
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 0 0 20px;
 }
 .execution-card {
   padding: 17px;
