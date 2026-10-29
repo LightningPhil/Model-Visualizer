@@ -69,6 +69,7 @@ export type NumericalFrame = SimulationFrame & {
   bindings: Record<string, string[]>
 }
 export type NumericalTrace = Omit<SimulationTrace, 'frames'> & {
+  intervention?: HeadPatch
   version: 1
   config: ModelConfig
   settings: NumericalSettings
@@ -85,6 +86,15 @@ export type NumericalTrace = Omit<SimulationTrace, 'frames'> & {
     output: string
   }
 }
+export type HeadPatch = {
+  mode: 'zero' | 'patch'
+  layer: number
+  head: number
+  position: number
+  replacement?: number[]
+  source: string
+  donorPrompt?: string
+}
 export type CheckpointWeights = {
   config: ModelConfig
   parameters: Record<string, Float32Array>
@@ -98,6 +108,7 @@ export type CheckpointWeights = {
   }
 }
 type Options = SimulationOptions & {
+  intervention?: HeadPatch
   settings: NumericalSettings
   checkpoint?: CheckpointWeights
   onToken?: (ids: number[]) => void
@@ -123,6 +134,27 @@ export const numericalAdapter: ExecutionAdapter<Options, NumericalTrace> = {
     const config = parseModelConfig(inputConfig)
     const settings = structuredClone(options.settings)
     const checkpoint = options.checkpoint
+    const patch = options.intervention
+    if (
+      patch &&
+      (!Number.isInteger(patch.layer) ||
+        patch.layer < 0 ||
+        patch.layer >= config.nLayers ||
+        !Number.isInteger(patch.head) ||
+        patch.head < 0 ||
+        patch.head >= config.nQueryHeads ||
+        !Number.isInteger(patch.position) ||
+        patch.position !== settings.inputIds.length - 1 ||
+        settings.generate !== 1 ||
+        !['zero', 'patch'].includes(patch.mode) ||
+        (patch.mode === 'patch' &&
+          (!patch.replacement ||
+            patch.replacement.length !== config.headDim ||
+            !patch.replacement.every(Number.isFinite))))
+    )
+      throw new Error(
+        'Interventions require one valid head at the final prompt position and a one-token run.',
+      )
     if (
       checkpoint &&
       JSON.stringify(config) !== JSON.stringify(parseModelConfig(checkpoint.config))
@@ -560,15 +592,48 @@ export const numericalAdapter: ExecutionAdapter<Options, NumericalTrace> = {
             l,
             true,
           )
-          const result = put(
-            matmul(`${k}/head-${h}`, `Head ${h} value-weighted result`, weights, values[kv]),
+          const activePatch = patch && call === 0 && patch.layer === l && patch.head === h
+          let result = put(
+            matmul(
+              `${k}/head-${h}${activePatch ? '/before-intervention' : ''}`,
+              `Head ${h} value-weighted result`,
+              weights,
+              values[kv],
+            ),
           )
           result.positions = { T: [...queryPositions] }
+          if (activePatch) {
+            const changed = Float32Array.from(result.data),
+              row = queryPositions.indexOf(patch.position)
+            if (row < 0) throw new Error('The intervention position is absent from prefill.')
+            for (let d = 0; d < config.headDim; d++)
+              changed[row * config.headDim + d] = patch.mode === 'zero' ? 0 : patch.replacement![d]
+            const patched = put(
+              makeTensor(
+                `${k}/head-${h}`,
+                `Head ${h} result · ${patch.mode === 'zero' ? 'zero ablation' : 'donor patch'}`,
+                result.shape,
+                result.axes,
+                changed,
+                {
+                  op: 'intervention',
+                  input: result.id,
+                  position: patch.position,
+                  mode: patch.mode,
+                  source: patch.source,
+                },
+              ),
+            )
+            patched.positions = result.positions
+            result = patched
+          }
           headOutputs.push(result)
           emit(
             at(`attn.head-${h}`),
             `Attention weights · V${kv}`,
-            'Contract the key-slot axis. Each output feature is a weighted sum of the corresponding V feature, not an average across heads.',
+            activePatch
+              ? `Controlled intervention: ${patch.mode} the final-prompt head vector before concatenation and Wo. ${patch.source}. Downstream operations are recomputed.`
+              : 'Contract the key-slot axis. Each output feature is a weighted sum of the corresponding V feature, not an average across heads.',
             [weights, values[kv]],
             [result],
             l,
@@ -815,6 +880,7 @@ export const numericalAdapter: ExecutionAdapter<Options, NumericalTrace> = {
       tensors,
       outputIds: confirmed.slice(settings.inputIds.length),
       ...(checkpoint ? { checkpoint: checkpoint.provenance } : {}),
+      ...(patch ? { intervention: structuredClone(patch) } : {}),
     }
   },
 }

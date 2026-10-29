@@ -11,6 +11,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Bookmark,
+  BookOpen,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -37,13 +38,17 @@ import {
   numericalGraph,
   type NumericalSession,
 } from '../../model/numerics/session'
-import { unravel, type NumericTensor } from '../../model/numerics/tensor'
-import { valueLabel, type OperandCell } from '../../model/numerics/explain'
+import { unravel, tensorComparisonIssue, type NumericTensor } from '../../model/numerics/tensor'
+import { explainCell, valueLabel, type OperandCell } from '../../model/numerics/explain'
 import { Dialog } from '../Dialog'
 import { GraphCanvas, type CameraFocus, type Selection } from '../GraphCanvas'
 import { MathBlock } from '../Math'
 import { CachePolicyControls } from '../CachePolicyControls'
 import { TooltipSettingsButton } from '../help/TooltipProvider'
+import { useWiki, useWikiFollow } from '../help/WikiProvider'
+import { StudyRecordForm, StudyRecordLibrary } from '../help/StudyRecords'
+import { RunComparison } from './RunComparison'
+import type { StudyRecipe } from '../../model/study/records'
 import { TensorView } from './TensorView'
 import { CellCalculation } from './CellCalculation'
 import { HeadObservatory } from './HeadObservatory'
@@ -147,12 +152,16 @@ type WorkbenchProps = {
   doc: ModelDocument
   reference: ModelDocument
   initialEntry?: string
+  initialStudy?: StudyRecipe
+  onRestoreStudy?: (recipe: StudyRecipe) => void
   onSave: (session: NumericalSession) => void
   onClose: () => void
   onTheme: () => void
   notify: (message: string) => void
   trained?: {
     trace: NumericalTrace
+    baseline?: NumericalTrace
+    clearBaseline?: () => void
     session: NumericalSession
     writable: boolean
     controls: ReactNode
@@ -166,7 +175,27 @@ export function NumericalWorkbench(props: WorkbenchProps) {
       ? { session: props.trained.session, writable: props.trained.writable }
       : loadNumericalSession(props.doc),
   )
-  const [session, setSession] = useState(initial.session)
+  const [session, setSession] = useState(() =>
+    props.initialStudy?.kind === 'numerical'
+      ? {
+          ...initial.session,
+          settings: props.initialStudy.settings,
+          pinned: props.initialStudy.baseline,
+          ...(props.initialStudy.settings.attention !== initial.session.settings.attention
+            ? {
+                layouts: {
+                  ...initial.session.layouts,
+                  [initial.session.settings.attention]: initial.session.layout,
+                },
+                layout: initial.session.layouts[props.initialStudy.settings.attention] ?? {
+                  direction: initial.session.layout.direction,
+                  positions: {},
+                },
+              }
+            : {}),
+        }
+      : initial.session,
+  )
   const current = useReferenceTrace(props.trained ? undefined : session.settings)
   const comparison = useReferenceTrace(props.trained ? undefined : session.pinned)
   const trace = props.trained?.trace ?? current.trace
@@ -202,6 +231,8 @@ function NumericalWorkbenchView({
   doc,
   reference,
   initialEntry,
+  initialStudy,
+  onRestoreStudy,
   onSave,
   onClose,
   onTheme,
@@ -211,7 +242,7 @@ function NumericalWorkbenchView({
   session,
   setSession,
   trace,
-  baseline,
+  baseline: referenceBaseline,
   computing,
   computationError,
   retryComparison,
@@ -225,6 +256,9 @@ function NumericalWorkbenchView({
   computationError?: string
   retryComparison: () => void
 }) {
+  const openWiki = useWiki()
+  const [capturedBaseline, setCapturedBaseline] = useState<NumericalTrace>()
+  const baseline = trained?.baseline ?? capturedBaseline ?? referenceBaseline
   const saveRef = useRef(onSave)
   saveRef.current = onSave
   const [cursor, setCursor] = useState(0),
@@ -401,6 +435,29 @@ function NumericalWorkbenchView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialEntry])
   useEffect(() => {
+    if (
+      (initialStudy?.kind !== 'numerical' && initialStudy?.kind !== 'trained') ||
+      !initialStudy.node
+    )
+      return
+    const restoreNode = initialStudy.node
+    const at = trace.frames.findIndex(
+      (f) => f.call === (initialStudy.call ?? 0) && f.nodeIds.includes(restoreNode),
+    )
+    if (at < 0) return
+    jump(restoreNode, initialStudy.call ?? 0)
+    if (initialStudy.tensor && trace.tensors[initialStudy.tensor]) {
+      setCursor(Math.max(at, trace.tensors[initialStudy.tensor].createdAt))
+      setCell({
+        tensor: initialStudy.tensor,
+        index: Math.min(
+          initialStudy.index ?? 0,
+          trace.tensors[initialStudy.tensor].data.length - 1,
+        ),
+      })
+    }
+  }, [initialStudy])
+  useEffect(() => {
     if (!playing) return
     if (computing) {
       setPlaying(false)
@@ -549,6 +606,101 @@ function NumericalWorkbenchView({
       tensor && currentCell
         ? (unravel(currentCell.index, tensor.shape)[tensor.axes.indexOf('T')] ?? 0)
         : 0
+  const wikiContext = {
+    doc: reference,
+    graph,
+    selection:
+      selection ?? (frame.nodeIds[0] ? { type: 'node' as const, id: frame.nodeIds[0] } : undefined),
+    symbols,
+    inspection:
+      tensor && currentCell
+        ? {
+            name: tensor.name,
+            index: currentCell.index,
+            coordinate: unravel(currentCell.index, tensor.shape),
+            axes: tensor.axes,
+            value: Number.isFinite(tensor.data[currentCell.index])
+              ? tensor.data[currentCell.index]
+              : String(tensor.data[currentCell.index]),
+            explanation: explainCell(trace, tensor, currentCell.index).explanation,
+            tex: explainCell(trace, tensor, currentCell.index).tex,
+          }
+        : undefined,
+    config: trace.config,
+    mode: trained ? ('trained' as const) : ('untrained' as const),
+    currentGraphOnly: true,
+    onRestoreStudy,
+    onExperiment: (entry: string) => jump(resolveNumericalExample(entry, trace.config)),
+    onNavigate: (target: import('../../help/wiki/catalog').WikiTarget) => {
+      if (target.type === 'graph') return
+      select({ type: target.type, id: target.id })
+      const node =
+        target.type === 'node' ? target.id : graph.edges.find((e) => e.id === target.id)?.target
+      if (node) setFocus({ id: node, revision: Date.now() })
+      setMobilePane('data')
+    },
+  }
+  useWikiFollow(wikiContext)
+  const recordRecipe: StudyRecipe =
+    trained && trace.checkpoint && trace.tokenization
+      ? {
+          kind: 'trained',
+          checkpoint: trace.checkpoint.id,
+          node: selection?.type === 'node' ? selection.id : frame.nodeIds[0],
+          call: frame.call,
+          tensor: currentCell?.tensor,
+          index: currentCell?.index,
+          revision: trace.checkpoint.revision,
+          ...(baseline?.tokenization
+            ? {
+                comparison: {
+                  settings: {
+                    prompt: baseline.tokenization.prompt,
+                    generate: baseline.settings.generate,
+                    seed: baseline.settings.seed,
+                    sampling: baseline.settings.sampling,
+                    temperature: baseline.settings.temperature,
+                  },
+                  ...(baseline.intervention
+                    ? {
+                        intervention: {
+                          mode: baseline.intervention.mode,
+                          layer: baseline.intervention.layer,
+                          head: baseline.intervention.head,
+                          donorPrompt: baseline.intervention.donorPrompt,
+                        },
+                      }
+                    : {}),
+                },
+              }
+            : {}),
+          settings: {
+            prompt: trace.tokenization.prompt,
+            generate: trace.settings.generate,
+            seed: trace.settings.seed,
+            sampling: trace.settings.sampling,
+            temperature: trace.settings.temperature,
+          },
+          ...(trace.intervention
+            ? {
+                intervention: {
+                  mode: trace.intervention.mode,
+                  layer: trace.intervention.layer,
+                  head: trace.intervention.head,
+                  donorPrompt: trace.intervention.donorPrompt,
+                },
+              }
+            : {}),
+        }
+      : {
+          kind: 'numerical',
+          settings: trace.settings,
+          ...(baseline ? { baseline: baseline.settings } : {}),
+          node: selection?.type === 'node' ? selection.id : frame.nodeIds[0],
+          call: frame.call,
+          tensor: currentCell?.tensor,
+          index: currentCell?.index,
+        }
   return (
     <Dialog
       title="The mathematics, alive."
@@ -565,10 +717,26 @@ function NumericalWorkbenchView({
           Hkv {trace.config.nKvHeads} · Dh {trace.config.headDim} · F {trace.config.ffnDim} · V{' '}
           {trace.config.vocabSize}
         </span>
-        <button disabled={exporting || computing} onClick={() => void exportTrace()}>
-          <Download size={13} /> {exporting ? 'Preparing export…' : 'Export trace'}
+        <button
+          aria-label={exporting ? 'Preparing export…' : 'Export trace'}
+          disabled={exporting || computing}
+          onClick={() => void exportTrace()}
+        >
+          <Download size={13} />{' '}
+          <span className="compact-action-label">
+            {exporting ? 'Preparing export…' : 'Export trace'}
+          </span>
         </button>
         <TooltipSettingsButton />
+        <button
+          aria-label="Explain this"
+          onClick={() => {
+            setPlaying(false)
+            openWiki(wikiContext)
+          }}
+        >
+          <BookOpen size={14} /> <span className="compact-action-label">Explain this</span>
+        </button>
         <button aria-label="Toggle numerical theme" onClick={onTheme}>
           {doc.ui.theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
         </button>
@@ -1077,23 +1245,44 @@ function NumericalWorkbenchView({
                 Pan and zoom freely; Follow flow keeps your zoom. Click a node or connection to
                 inspect its tensors.
               </small>
-              {!trained && (
+              {
                 <button
                   onClick={() => {
-                    update({ pinned: structuredClone(session.settings) })
+                    if (trained) setCapturedBaseline(trace)
+                    else update({ pinned: structuredClone(trace.settings) })
                     notify('Pinned this run as the comparison baseline.')
                   }}
                 >
                   Pin baseline
                 </button>
-              )}
+              }
               {baseline && (
-                <button onClick={() => update({ pinned: undefined })}>Clear baseline</button>
+                <button
+                  onClick={() => {
+                    setCapturedBaseline(undefined)
+                    trained?.clearBaseline?.()
+                    update({ pinned: undefined })
+                  }}
+                >
+                  Clear baseline
+                </button>
               )}
             </div>
           </div>
         </main>
         <aside className="numerical-inspector" aria-label="Numerical tensor inspector">
+          {baseline && (
+            <RunComparison
+              trace={trace}
+              baseline={baseline}
+              piece={trained ? (id) => trained.tokenizer.piece(id) : undefined}
+              onInspect={(at, tensor, index) => {
+                seek(at)
+                setCell({ tensor, index })
+                setFocus({ id: trace.frames[at].nodeIds[0], revision: Date.now() })
+              }}
+            />
+          )}
           <div className="numeric-inspector-heading">
             <span className="eyebrow">TENSOR MICROSCOPE</span>
             <button
@@ -1107,6 +1296,39 @@ function NumericalWorkbenchView({
           {notesOpen ? (
             <div className="numerical-notes">
               <h3>Your experiment notebook.</h3>
+              <StudyRecordForm
+                recipe={recordRecipe}
+                title={`${trained ? 'Trained' : 'Untrained'} · ${frame.title}`}
+                evidence={{
+                  scope: trained
+                    ? 'Verified trained checkpoint · captured run'
+                    : 'Seeded untrained reference · captured run',
+                  tensor: tensor?.id,
+                  shape: tensor?.shape,
+                  axes: tensor?.axes,
+                  start: currentCell?.index ?? 0,
+                  values: tensor
+                    ? Array.from(
+                        tensor.data.slice(currentCell?.index ?? 0, (currentCell?.index ?? 0) + 64),
+                        (v) => (Number.isFinite(v) ? v : String(v)),
+                      )
+                    : undefined,
+                  baseline:
+                    tensor &&
+                    baseline?.tensors[tensor.id] &&
+                    !tensorComparisonIssue(tensor, baseline.tensors[tensor.id])
+                      ? Array.from(
+                          baseline.tensors[tensor.id].data.slice(
+                            currentCell?.index ?? 0,
+                            (currentCell?.index ?? 0) + 64,
+                          ),
+                          (v) => (Number.isFinite(v) ? v : String(v)),
+                        )
+                      : undefined,
+                  summary: `${frame.title}, call ${frame.call}. Selected tensor slice contains at most 64 consecutive cells, not a whole activation capture. ${trace.intervention ? JSON.stringify(trace.intervention) : 'No internal intervention.'} Output IDs: ${trace.outputIds.join(', ')}. ${trace.arithmetic}`,
+                }}
+              />
+              {onRestoreStudy && <StudyRecordLibrary onRestore={onRestoreStudy} />}
               <textarea
                 aria-label="Numerical laboratory notes"
                 maxLength={24000}

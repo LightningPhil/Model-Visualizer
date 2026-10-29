@@ -1,0 +1,33 @@
+.wiki-entry-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--cyan-bg);
+  color: var(--cyan);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 11px;
+  font-size: 11px;
+}
+.wiki-inspector-links {
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+  margin: 18px 0;
+}
+.wiki-inspector-links > .wiki-entry-button {
+  width: 100%;
+  justify-content: space-between;
+  padding: 11px;
+}
+.wiki-inspector-links > p {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.7;
+  margin: 8px 0;
+}
+@media (max-width: 760px) {
+  .workspace-heading-actions .wiki-entry-button {
+    padding: 7px;
+    font-size: 10px;
+  }
+}

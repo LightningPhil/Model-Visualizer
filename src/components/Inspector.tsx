@@ -34,6 +34,7 @@ type Props = {
   onNotes: (notes: string) => void
   notify: (message: string) => void
   onNumerical: (entry: string) => void
+  onExplain: () => void
 }
 
 function TensorCard({
@@ -85,6 +86,7 @@ export function Inspector({
   onNotes,
   notify,
   onNumerical,
+  onExplain,
 }: Props) {
   const [tab, setTab] = useState<'inspect' | 'notes'>('inspect')
   const component: Component | undefined =
@@ -174,6 +176,12 @@ export function Inspector({
               connection?.description ??
               'Select a component to see its mathematics and tensors. Select a connection to inspect the operation between components.'}
           </p>
+          <div className="wiki-inspector-links">
+            <button className="wiki-entry-button" onClick={onExplain}>
+              <BookOpen size={15} /> Explain this in the wiki <ArrowUpRight size={14} />
+            </button>
+            <p>Purpose, mathematics, worked examples and connected concepts.</p>
+          </div>
           {component?.childGraph && (
             <button className="explore-button" onClick={() => onOpen(component.childGraph!)}>
               Explore inside

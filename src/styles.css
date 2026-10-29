@@ -234,6 +234,14 @@ p {
   min-height: 650px;
   overflow: hidden;
 }
+.study-start-button {
+  white-space: nowrap;
+}
+@media (max-width: 1200px) {
+  .study-start-button {
+    display: none;
+  }
+}
 .app.with-inspector {
   grid-template-columns: 232px minmax(0, 1fr) 310px;
 }
@@ -2410,137 +2418,6 @@ h1 {
   font-size: 12px;
   color: var(--muted);
 }
-.guide-modal {
-  width: min(740px, calc(100vw - 32px));
-}
-.guide-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-  padding: 0 28px;
-  gap: 25px;
-}
-.guide-tabs > button {
-  padding: 13px 0;
-  background: none;
-  color: var(--muted);
-  font-size: 11px;
-  border-bottom: 2px solid transparent;
-}
-.guide-tabs > .active {
-  color: var(--cyan);
-  border-color: var(--cyan);
-}
-.guide-content {
-  padding: 24px 28px 30px;
-  max-height: 57dvh;
-  overflow: auto;
-  scrollbar-width: thin;
-}
-.guide-content > p,
-.guide-content li {
-  font-size: 12px;
-  line-height: 1.9;
-  color: var(--secondary);
-  margin-bottom: 18px;
-}
-.guide-content li {
-  margin-bottom: 8px;
-}
-.guide-content > .guide-lead {
-  font-size: 17px;
-  font-weight: 450;
-  color: var(--text);
-  line-height: 1.6;
-}
-.guide-callout {
-  display: flex;
-  align-items: flex-start;
-  gap: 15px;
-  border: 1px solid color-mix(in srgb, var(--cyan) 22%, var(--border));
-  border-radius: 7px;
-  padding: 18px;
-  background: var(--cyan-bg);
-  margin: 25px 0;
-  color: var(--cyan);
-}
-.guide-callout strong {
-  font-size: 12px;
-  font-weight: 500;
-}
-.guide-callout p {
-  font-size: 11px;
-  line-height: 1.8;
-  color: var(--secondary);
-  margin-top: 7px;
-}
-.guide-content > h3 {
-  font-size: 14px;
-  font-weight: 500;
-  margin: 22px 0 10px;
-}
-.guide-content ol {
-  padding-left: 18px;
-}
-.research-source {
-  display: flex;
-  align-items: flex-start;
-  gap: 15px;
-  padding: 17px 0;
-  border-bottom: 1px solid var(--border-soft);
-  color: var(--secondary);
-}
-.research-source:first-child {
-  padding-top: 0;
-}
-.research-source:last-child {
-  border: 0;
-}
-.research-source > span {
-  flex: 1;
-}
-.research-source > svg {
-  color: var(--cyan);
-  margin-top: 2px;
-}
-.research-source strong {
-  font-size: 12px;
-  font-weight: 500;
-}
-.research-source p {
-  font-size: 10px;
-  line-height: 1.7;
-  color: var(--muted);
-  margin-top: 5px;
-}
-.format-title {
-  display: flex;
-  gap: 15px;
-  align-items: center;
-  margin: 0 0 24px;
-  color: var(--cyan);
-}
-.format-title h3 {
-  font-size: 16px;
-  color: var(--text);
-  font-weight: 500;
-}
-.format-title p {
-  font-size: 10px;
-  line-height: 1.7;
-  color: var(--muted);
-  margin-top: 5px;
-}
-.guide-content pre {
-  font-size: 10px;
-  line-height: 1.8;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 20px;
-  color: var(--cyan);
-  margin: 20px 0;
-  overflow: auto;
-}
 .toast {
   position: fixed;
   bottom: 24px;
@@ -3422,16 +3299,6 @@ h1 {
   }
   .modal-footer > span {
     line-height: 1.6;
-  }
-  .guide-content {
-    padding: 20px 22px;
-  }
-  .guide-tabs {
-    padding: 0 22px;
-    gap: 19px;
-  }
-  .guide-tabs > button {
-    font-size: 9px;
   }
   .toast {
     font-size: 10px;

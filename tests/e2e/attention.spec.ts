@@ -75,9 +75,10 @@ test('cache policies preserve absolute indices, change storage and survive expor
   await page.screenshot({ path: 'docs/images/cache-sparse-light.png' })
   await expect
     .poll(() =>
-      page.evaluate(
-        () => JSON.parse(localStorage.getItem('model-visualizer.workspace.v1')!).config.kvCache,
-      ),
+      page.evaluate(() => {
+        const saved = localStorage.getItem('model-visualizer.workspace.v1')
+        return saved ? JSON.parse(saved).config.kvCache : null
+      }),
     )
     .toEqual({ mode: 'sparse', windowSize: 3, stride: 4 })
   const downloadPromise = page.waitForEvent('download')

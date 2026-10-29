@@ -35,7 +35,7 @@ function loadPreferences() {
 }
 
 function targetAt(node: EventTarget | null): Omit<Target, 'mode'> | undefined {
-  if (!(node instanceof Element) || node.closest('.help-tooltip')) return
+  if (!(node instanceof Element) || node.closest('.help-tooltip,.wiki-modal')) return
   let element =
     node.closest<HTMLElement>(HELP_TARGETS) ??
     node.closest<HTMLElement>('[data-help],[data-tooltip-detail]')
@@ -93,8 +93,8 @@ function HelpCard({ visible, id, delayMs }: { visible: Visible; id: string; dela
       )}
       {content.sources && (
         <p className="help-tooltip-sources">
-          Primary sources: {content.sources.join('; ')}. Links and equations are in the field guide
-          / inspector.
+          Primary sources: {content.sources.join('; ')}. Links and equations are in the model wiki /
+          inspector.
         </p>
       )}
       <div className="help-tooltip-footer">

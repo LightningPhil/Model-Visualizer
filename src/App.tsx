@@ -12,9 +12,7 @@ import {
   Command,
   Cpu,
   Database,
-  FileJson,
   FlaskConical,
-  CodeXml as Github,
   HelpCircle,
   Layers3,
   Menu,
@@ -55,6 +53,10 @@ import { cachePolicyLabel, residentCount, kvHeadFor } from './model/attention'
 import { CachePolicyControls } from './components/CachePolicyControls'
 import { TeachingModelControls } from './components/TeachingModelControls'
 import { TooltipSettingsButton } from './components/help/TooltipProvider'
+import { useWiki, useWikiFollow } from './components/help/WikiProvider'
+import type { StudyRecipe } from './model/study/records'
+import { storiesManifest } from './model/checkpoints/stories'
+import type { WikiTarget } from './help/wiki/catalog'
 import { updateTeachingConfig } from './model/teaching-config'
 import { createGraphCompiler } from './model/graph-compiler'
 import { NUMERICAL_SESSION_KEY } from './model/numerics/identity'
@@ -106,6 +108,7 @@ const labGraphs = new Set([
 ])
 
 export default function App() {
+  const openWiki = useWiki()
   const [doc, setDoc] = useState<ModelDocument>(() => upgrade(loadWorkspace() ?? referenceDocument))
   const [simulating, setSimulating] = useState(false)
   const [diagramReady, setDiagramReady] = useState(false)
@@ -118,11 +121,10 @@ export default function App() {
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [mobileNav, setMobileNav] = useState(false)
   const [labOpen, setLabOpen] = useState(true)
-  const [modal, setModal] = useState<
-    'guide' | 'search' | 'config' | 'numerical' | 'local-model' | null
-  >(null)
+  const [modal, setModal] = useState<'search' | 'config' | 'numerical' | 'local-model' | null>(null)
   const [numericalEntry, setNumericalEntry] = useState<string>()
-  const [guideTab, setGuideTab] = useState<'guide' | 'sources' | 'format'>('guide')
+  const [studyRecipe, setStudyRecipe] = useState<StudyRecipe>()
+  const [studyRevision, setStudyRevision] = useState(0)
   const [query, setQuery] = useState('')
   const [toast, setToast] = useState('')
   const [saved, setSaved] = useState(true)
@@ -325,6 +327,95 @@ export default function App() {
     head: selectedHead,
   }
 
+  function explain(initialArticle?: string, viewOnly = false, simulationStep = false) {
+    sim.setPlaying(false)
+    setMobileNav(false)
+    openWiki({
+      doc,
+      graph,
+      selection:
+        simulationStep && simulationFrame?.nodeIds[0]
+          ? { type: 'node', id: simulationFrame.nodeIds[0] }
+          : viewOnly
+            ? null
+            : selection,
+      symbols,
+      mode: simulating ? 'simulation' : 'architecture',
+      initialArticle,
+      onRestoreStudy: restoreStudy,
+      onExperiment: (entry) => {
+        setNumericalEntry(entry)
+        setModal('numerical')
+      },
+      onNavigate: (target: WikiTarget) => {
+        if (target.graphId !== graph.id) openGraph(target.graphId)
+        if (target.type !== 'graph') {
+          setSelection({ type: target.type, id: target.id })
+          setInspectorOpen(true)
+          const graphForTarget =
+            target.graphId === graph.id
+              ? graph
+              : compileGraph(
+                  doc,
+                  doc.graphs.find((g) => g.id === target.graphId)!,
+                )
+          const node =
+            target.type === 'node'
+              ? target.id
+              : graphForTarget.edges.find((edge) => edge.id === target.id)?.target
+          if (node) setFocus({ id: node, revision: Date.now() })
+        }
+      },
+    })
+  }
+
+  function restoreStudy(recipe: StudyRecipe) {
+    if (recipe.kind === 'training' || recipe.kind === 'investigation') {
+      openWiki({
+        doc,
+        graph,
+        mode: 'architecture',
+        initialArticle: 'investigations',
+        initialStudy: recipe,
+        onRestoreStudy: restoreStudy,
+      })
+      return
+    }
+    if (
+      recipe.kind === 'trained' &&
+      (recipe.checkpoint !== storiesManifest.id || recipe.revision !== storiesManifest.revision)
+    ) {
+      notify(
+        'This record uses a different checkpoint revision. It is preserved, but this app cannot replay it.',
+      )
+      return
+    }
+    setStudyRevision((r) => r + 1)
+    setStudyRecipe(recipe)
+    setNumericalEntry(undefined)
+    setModal(recipe.kind === 'trained' ? 'local-model' : 'numerical')
+  }
+  useWikiFollow({
+    doc,
+    graph,
+    selection,
+    mode: simulating ? 'simulation' : 'architecture',
+    symbols,
+    onRestoreStudy: restoreStudy,
+    onExperiment: (entry) => {
+      setNumericalEntry(entry)
+      setModal('numerical')
+    },
+    onNavigate: (target) => {
+      if (target.graphId !== graph.id) openGraph(target.graphId)
+      if (target.type !== 'graph') {
+        setSelection({ type: target.type, id: target.id })
+        setInspectorOpen(true)
+        if (target.type === 'node') setFocus({ id: target.id, revision: Date.now() })
+      }
+    },
+  })
+
   return (
     <div
       className={`app ${inspectorOpen ? 'with-inspector' : ''} ${simulating ? 'with-simulator' : ''}`}
@@ -356,6 +447,16 @@ export default function App() {
           <span className="breadcrumb-current">Workbench</span>
         </div>
         <div className="topbar-actions">
+          <button className="button study-start-button" onClick={() => explain('investigations')}>
+            Start with a question
+          </button>
+          <button
+            className="icon-button"
+            aria-label="Open model wiki"
+            onClick={() => explain('home')}
+          >
+            <BookOpen size={17} />
+          </button>
           <TooltipSettingsButton />
           <button
             className="icon-button search-button"
@@ -550,10 +651,10 @@ export default function App() {
           </div>
         </div>
         <div className="sidebar-bottom">
-          <button className="guide-link" onClick={() => setModal('guide')}>
+          <button className="guide-link" onClick={() => explain('home')}>
             <BookOpen size={16} />
             <span>
-              The field guide<small>Concepts, sources & model format</small>
+              The model wiki<small>Detailed explanations, connected to your model</small>
             </span>
             <ArrowUpRight size={13} />
           </button>
@@ -585,6 +686,9 @@ export default function App() {
             <p>{graph.subtitle}</p>
           </div>
           <div className="workspace-heading-actions">
+            <button className="wiki-entry-button" onClick={() => explain(undefined, true)}>
+              <BookOpen size={14} /> Explain this view
+            </button>
             <span className="teaching-badge">
               <FlaskConical size={12} />
               Educational
@@ -927,6 +1031,7 @@ export default function App() {
               config={doc.config}
               onCachePolicy={(kvCache) => setConfig({ kvCache })}
               ready={diagramReady}
+              onExplain={() => explain(undefined, false, true)}
               onClose={() => {
                 sim.setPlaying(false)
                 setInspectorOpen(false)
@@ -942,6 +1047,7 @@ export default function App() {
               symbols={symbols}
               symbolic={symbolic}
               onOpen={openGraph}
+              onExplain={() => explain()}
               onNotes={(notes) => setDoc({ ...doc, ui: { ...doc.ui, notes } })}
               notify={notify}
               onNumerical={(entry) => {
@@ -970,11 +1076,17 @@ export default function App() {
           }
         >
           <NumericalWorkbench
+            key={`numerical-${studyRevision}`}
             doc={doc}
             reference={referenceDocument}
             initialEntry={numericalEntry}
+            initialStudy={studyRecipe}
+            onRestoreStudy={restoreStudy}
             onSave={saveNumericalSession}
-            onClose={() => setModal(null)}
+            onClose={() => {
+              setModal(null)
+              setStudyRecipe(undefined)
+            }}
             onTheme={() =>
               setDoc((current) => ({
                 ...current,
@@ -994,10 +1106,16 @@ export default function App() {
           }
         >
           <LocalModelWorkbench
+            key={`trained-${studyRevision}`}
             doc={doc}
             reference={referenceDocument}
+            initialStudy={studyRecipe}
+            onRestoreStudy={restoreStudy}
             onSave={saveCheckpointSession}
-            onClose={() => setModal(null)}
+            onClose={() => {
+              setModal(null)
+              setStudyRecipe(undefined)
+            }}
             notify={notify}
             onTheme={() =>
               setDoc((current) => ({
@@ -1088,161 +1206,6 @@ export default function App() {
             {searchResults.length === 0 && (
               <p>No matching components. Try a different operation or name.</p>
             )}
-          </div>
-        </Dialog>
-      )}
-
-      {modal === 'guide' && (
-        <Dialog
-          title="A field guide to the model."
-          onClose={() => setModal(null)}
-          className="guide-modal"
-        >
-          <div className="guide-tabs">
-            {(['guide', 'sources', 'format'] as const).map((value) => (
-              <button
-                key={value}
-                className={guideTab === value ? 'active' : ''}
-                onClick={() => setGuideTab(value)}
-              >
-                {value === 'guide'
-                  ? 'Getting oriented'
-                  : value === 'sources'
-                    ? 'Research library'
-                    : 'The model format'}
-              </button>
-            ))}
-          </div>
-          <div className="guide-content">
-            {guideTab === 'guide' ? (
-              <>
-                <p className="guide-lead">{doc.description}</p>
-                <p>{doc.documentation}</p>
-                <div className="guide-callout">
-                  <FlaskConical size={20} />
-                  <div>
-                    <strong>Explore structure. Inspect numerical reference values.</strong>
-                    <p>
-                      The BPE tokenizer runs locally. Tensor dimensions and cache byte counts are
-                      calculated. Study heatmaps and graphical MTP choices are illustrative. The
-                      separate tensor laboratory executes a small transformer with seeded, untrained
-                      weights and explains its actual tensor values. No trained language model or
-                      inference service is used.
-                    </p>
-                    <button
-                      className="numerical-example-button"
-                      onClick={() => {
-                        setNumericalEntry(undefined)
-                        setModal('numerical')
-                      }}
-                    >
-                      <FlaskConical size={15} /> Open tensor laboratory <ArrowUpRight size={14} />
-                    </button>
-                  </div>
-                </div>
-                <h3>Ways to explore</h3>
-                <ol>
-                  <li>Select a component to inspect its inputs, outputs, weights and LaTeX.</li>
-                  <li>Select a connection to see the mathematical operation it represents.</li>
-                  <li>Open a component with an expand icon to explore the graph inside.</li>
-                  <li>
-                    Try a numerical example, then select a matrix cell and follow its operands.
-                  </li>
-                </ol>
-                <h3>Make a view yours</h3>
-                <p>
-                  Drag nodes, pan and zoom. Auto-layout rearranges the current graph; the direction
-                  button switches between horizontal and vertical flow. Every graph keeps its own
-                  layout. Export the model to keep a portable copy, including your notebook.
-                </p>
-                <h3>What comes next</h3>
-                <p>
-                  The foundation is a dense, decoder-only model. Separate future definitions can
-                  describe MoE routing, MLA, more advanced sparse patterns, encoder–decoder models,
-                  alternative positional encodings and custom tokenizers. Each needs an
-                  architecture-specific graph and sources.
-                </p>
-              </>
-            ) : guideTab === 'sources' ? (
-              <>
-                {doc.sources.map((source) => (
-                  <a
-                    className="research-source"
-                    href={source.url}
-                    key={source.id}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <BookOpen size={17} />
-                    <span>
-                      <strong>{source.title}</strong>
-                      <p>{source.note}</p>
-                    </span>
-                    <ArrowUpRight size={15} />
-                  </a>
-                ))}
-              </>
-            ) : (
-              <>
-                <div className="format-title">
-                  <FileJson size={29} />
-                  <div>
-                    <h3>Readable. Portable. Extensible.</h3>
-                    <p>A versioned JSON document with a published JSON Schema.</p>
-                  </div>
-                </div>
-                <p>
-                  Model semantics and layout travel together, but occupy separate fields. An agent
-                  can edit explanations, equations and graph structure without depending on UI code.
-                </p>
-                <pre>
-                  {JSON.stringify(
-                    {
-                      schemaVersion: '1.0',
-                      name: 'My model',
-                      config: { dModel: 512 },
-                      graphs: [
-                        {
-                          id: 'attention',
-                          nodes: ['components + tensors + LaTeX'],
-                          edges: ['operations + tensor shapes'],
-                          layout: { positions: {}, direction: 'RIGHT' },
-                        },
-                      ],
-                      sources: ['primary research'],
-                      ui: { notes: 'My documentation' },
-                    },
-                    null,
-                    2,
-                  )}
-                </pre>
-                <p>
-                  This is a structural sketch. Export a complete document to start editing. Import
-                  checks the schema, graph links, source references, head-sharing rules and
-                  dimension expressions before replacing your workspace.
-                </p>
-                <p>
-                  Use <code>extensions</code> for namespaced metadata. Unknown tokenizer adapters
-                  keep graph inspection available and disable token labs until an adapter is
-                  registered.
-                </p>
-                <button className="button export-button" onClick={() => exportDocument(doc)}>
-                  <ArrowDownToLine size={14} />
-                  Download complete example
-                </button>
-              </>
-            )}
-          </div>
-          <div className="modal-footer">
-            <a
-              href="https://github.com/LightningPhil/Model-Visualizer"
-              target="_blank"
-              rel="noreferrer"
-            >
-              <Github size={14} />
-              Model-Visualizer
-            </a>
-            <span>Research checked · 20 October 2026</span>
           </div>
         </Dialog>
       )}

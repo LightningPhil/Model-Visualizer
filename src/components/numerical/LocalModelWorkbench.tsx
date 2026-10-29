@@ -16,11 +16,17 @@ import {
 import { NumericalWorkbench } from './NumericalWorkbench'
 import { Dialog } from '../Dialog'
 import './numerical.css'
+import {
+  headInterventionSchema,
+  type HeadIntervention,
+  type StudyRecipe,
+} from '../../model/study/records'
 
 type Reply = {
   id: number
   ready?: boolean
   trace?: NumericalTrace
+  baseline?: NumericalTrace
   error?: string
   progress?: { count: number; text: string }
 }
@@ -77,6 +83,8 @@ export function LocalModelWorkbench({
   onClose,
   onTheme,
   notify,
+  initialStudy,
+  onRestoreStudy,
 }: {
   doc: ModelDocument
   reference: ModelDocument
@@ -84,10 +92,31 @@ export function LocalModelWorkbench({
   onClose: () => void
   onTheme: () => void
   notify: (message: string) => void
+  initialStudy?: StudyRecipe
+  onRestoreStudy?: (recipe: StudyRecipe) => void
 }) {
   const [initial] = useState(() => loadCheckpointSession(doc))
-  const [session, setSession] = useState(initial.session)
+  const compatibleRestore =
+    initialStudy?.kind === 'trained' &&
+    initialStudy.checkpoint === storiesManifest.id &&
+    initialStudy.revision === storiesManifest.revision
+      ? initialStudy
+      : undefined
+  const [session, setSession] = useState(() =>
+    compatibleRestore
+      ? { ...initial.session, settings: compatibleRestore.settings }
+      : initial.session,
+  )
   const [trace, setTrace] = useState<NumericalTrace>()
+  const [baseline, setBaseline] = useState<NumericalTrace>()
+  const [intervention, setIntervention] = useState<HeadIntervention>(
+    compatibleRestore?.intervention ?? {
+      mode: 'zero',
+      layer: 0,
+      head: 0,
+      donorPrompt: 'Once upon a time, there was a dog.',
+    },
+  )
   const [tokenizer, setTokenizer] = useState<StoriesTokenizer>()
   const [busy, setBusy] = useState(''),
     [error, setError] = useState('')
@@ -168,7 +197,7 @@ export function LocalModelWorkbench({
       }
     }
   }
-  async function run() {
+  async function run(intervene = false) {
     if (!tokenizer || !client.current) return
     const generation = ++request.current
     setError('')
@@ -180,9 +209,14 @@ export function LocalModelWorkbench({
           `This inspection run accepts at most 48 prompt tokens (including BOS); this prompt has ${ids.length}. Shorten it to retain every activation.`,
         )
       setBusy('Computing trained-model activations locally…')
-      const result = await client.current.request({ settings })
+      const result = await client.current.request({
+        settings,
+        ...(compatibleRestore?.comparison ? { comparison: compatibleRestore.comparison } : {}),
+        ...(intervene ? { intervention: headInterventionSchema.parse(intervention) } : {}),
+      })
       if (mounted.current && generation === request.current && result.trace) {
         setTrace(result.trace)
+        setBaseline(result.baseline)
         setBusy('')
       }
     } catch (cause) {
@@ -196,6 +230,17 @@ export function LocalModelWorkbench({
     <div className="trained-controls">
       <span className="eyebrow">LOCAL CHECKPOINT · TRAINED</span>
       <h3>Stories260K</h3>
+      {compatibleRestore && (
+        <p>
+          Reopened saved setup. Load the checkpoint, then{' '}
+          {compatibleRestore.intervention
+            ? 'use “Run controlled intervention” below to replay its replacement.'
+            : 'generate to reconstruct the captured run.'}
+          {compatibleRestore.comparison
+            ? ' The saved comparison is also reconstructed on an ordinary generation run.'
+            : ''}
+        </p>
+      )}
       <p>
         A small TinyStories completion model. 260,032 learned parameters. Five layers; GQA 8 query /
         4 KV heads; tied embedding/output weights. Its language ability is limited.
@@ -273,10 +318,80 @@ export function LocalModelWorkbench({
         </p>
       )}
       {busy && <p role="status">{busy}</p>}
-      <button className="button" disabled={!tokenizer || Boolean(busy)} onClick={run}>
+      <button className="button" disabled={!tokenizer || Boolean(busy)} onClick={() => void run()}>
         <Play size={14} />
         {trace ? 'Generate another trace' : 'Generate & inspect'}
       </button>
+      <details className="trained-interventions">
+        <summary>Experiment on a trained head</summary>
+        <p>
+          Replace one query head’s output vector at the final prompt position, before concatenation
+          and Wo. Run the unchanged baseline and replacement with the same prompt and checkpoint.
+          Both runs compute one next-token distribution, regardless of the generation budget above.
+        </p>
+        <label>
+          Replacement
+          <select
+            aria-label="Trained intervention replacement"
+            value={intervention.mode}
+            onChange={(e) =>
+              setIntervention((s) => ({ ...s, mode: e.target.value as HeadIntervention['mode'] }))
+            }
+          >
+            <option value="zero">Zero ablation</option>
+            <option value="patch">Patch from a donor prompt</option>
+          </select>
+        </label>
+        <label>
+          Layer
+          <select
+            aria-label="Trained intervention layer"
+            value={intervention.layer}
+            onChange={(e) => setIntervention((s) => ({ ...s, layer: Number(e.target.value) }))}
+          >
+            {[0, 1, 2, 3, 4].map((i) => (
+              <option key={i}>{i}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Query head
+          <select
+            aria-label="Trained intervention head"
+            value={intervention.head}
+            onChange={(e) => setIntervention((s) => ({ ...s, head: Number(e.target.value) }))}
+          >
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+              <option key={i}>{i}</option>
+            ))}
+          </select>
+        </label>
+        {intervention.mode === 'patch' && (
+          <label>
+            Donor prompt
+            <textarea
+              aria-label="Trained donor prompt"
+              maxLength={600}
+              value={intervention.donorPrompt ?? ''}
+              onChange={(e) =>
+                setIntervention((s) => ({ ...s, donorPrompt: e.target.value.replaceAll('\0', '') }))
+              }
+            />
+          </label>
+        )}
+        <p>
+          A donor patch takes that head’s final-position vector from the donor run using the same
+          checkpoint. Different token lengths mean different absolute positions; this is an explicit
+          counterfactual, not a position-matched claim. Donor prompts have the same 48-token bound.
+        </p>
+        <button
+          className="button"
+          disabled={!tokenizer || Boolean(busy)}
+          onClick={() => void run(true)}
+        >
+          Run controlled intervention
+        </button>
+      </details>
       {busy && (
         <button
           onClick={() => {
@@ -326,6 +441,8 @@ export function LocalModelWorkbench({
         onClose={onClose}
         onTheme={onTheme}
         notify={notify}
+        onRestoreStudy={onRestoreStudy}
+        initialStudy={initialStudy}
         onSave={(study) =>
           setSession((s) => ({
             ...s,
@@ -334,6 +451,8 @@ export function LocalModelWorkbench({
         }
         trained={{
           trace,
+          baseline,
+          clearBaseline: () => setBaseline(undefined),
           tokenizer,
           controls,
           session: checkpointStudySession(session),

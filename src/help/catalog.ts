@@ -14,7 +14,7 @@ const cache = ['GQA · Ainslie et al. (2023)', 'Mistral 7B · Jiang et al. (2023
 const entry = (title: string, ...paragraphs: string[]): HelpContent => ({ title, paragraphs })
 
 /** Explanations of this application's supported profile, not universal model
- * constraints. Primary-source links live in the field guide and inspector. */
+ * constraints. Primary-source links live in the model wiki and inspector. */
 export const helpCatalog: Record<string, HelpContent> = {
   'Model width D': {
     ...entry(
@@ -605,6 +605,31 @@ const actions: [string[], HelpContent][] = [
 ]
 for (const [names, content] of actions) for (const name of names) helpCatalog[name] = content
 Object.assign(helpCatalog, {
+  'Open model wiki': entry(
+    'Explore the model wiki',
+    'Open detailed guides to the model’s operations, tensor axes, equations and primary sources. Search concepts and the current model’s own authored component and connection explanations.',
+    'Choose a learning path, follow linked terminology, or use Explain this in the inspector to start from the selected operation. Help opens locally and preserves your study.',
+  ),
+  'Explain this view': entry(
+    'Understand the current view',
+    'Open this graph’s authored explanation with immediate links to relevant concept guides, mathematical conventions and worked examples.',
+    'The wiki can return to the referenced element on the canvas. Opening it pauses playback so you can read without losing the current step.',
+  ),
+  'Explain this in the wiki': entry(
+    'Learn about the selected operation',
+    'Read the selected component or connection’s authored explanation alongside deeper guides to its purpose, mathematics, axes and related mechanisms.',
+    'Follow prerequisites and linked terms, inspect synthetic worked examples, then return to the same study. Model descriptions and numerical provenance remain clearly identified.',
+  ),
+  'Explain this': entry(
+    'Explain the current numerical operation',
+    'Pause playback and open wiki help for the selected component or connection, or the current recorded operation if nothing is selected.',
+    'The reader identifies whether your run uses untrained reference parameters or the local trained checkpoint. Closing help returns to the same study.',
+  ),
+  'Explain this step': entry(
+    'Understand this simulation step',
+    'Pause the graphical simulator and explain the component at the current frame, with linked guides to its mechanism and state behavior.',
+    'The simulation’s choices are scripted; its animation does not represent trained-model activations. The wiki keeps that distinction visible.',
+  ),
   'Follow flow': entry(
     'Follow the recorded flow',
     'Optionally pan the numerical or trained-model canvas to the currently revealed operation, preserving your exact zoom. Leave this off to watch the complete model or a fixed region while computation progresses.',
@@ -683,7 +708,7 @@ export function namedHelp(name: string): HelpContent | undefined {
   if (helpCatalog[name]) return helpCatalog[name]
   if (name.startsWith('Load trained model')) return helpCatalog['Load trained model']
   if (name.startsWith('KV cache ·')) return helpCatalog['KV cache retention']
-  if (name.startsWith('The field guide')) return helpCatalog['Getting oriented']
+  if (name.startsWith('The model wiki')) return helpCatalog['Open model wiki']
   if (/^Tensor .+ slice$/.test(name))
     return entry(
       'Tensor axis slice',

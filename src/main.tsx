@@ -8,11 +8,14 @@ import 'katex/dist/katex.min.css'
 import './styles.css'
 import App from './App'
 import { TooltipProvider } from './components/help/TooltipProvider'
+import { WikiProvider } from './components/help/WikiProvider'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <TooltipProvider>
-      <App />
+      <WikiProvider>
+        <App />
+      </WikiProvider>
     </TooltipProvider>
   </React.StrictMode>,
 )

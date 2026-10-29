@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, type KeyboardEventHandler, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 
 export function Dialog({
@@ -6,22 +6,28 @@ export function Dialog({
   onClose,
   children,
   className = '',
+  onKeyDown,
+  modal = true,
 }: {
   title: string
   onClose: () => void
   children: ReactNode
   className?: string
+  onKeyDown?: KeyboardEventHandler<HTMLDialogElement>
+  modal?: boolean
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
     const element = ref.current!
-    element.showModal()
+    if (modal) element.showModal()
+    else element.show()
     return () => element.close()
-  }, [])
+  }, [modal])
   return (
     <dialog
       ref={ref}
       className={`modal ${className}`}
+      onKeyDown={onKeyDown}
       onCancel={(event) => {
         event.stopPropagation()
         onClose()
@@ -30,6 +36,7 @@ export function Dialog({
         if (event.target === event.currentTarget) onClose()
       }}
       aria-label={title}
+      aria-modal={modal}
     >
       <div className="modal-heading">
         <div>

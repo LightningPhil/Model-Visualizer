@@ -190,6 +190,7 @@ export function runStories(
   tokenizer: StoriesTokenizer,
   settings: TrainedRunSettings,
   onToken?: (ids: number[], text: string) => void,
+  intervention?: import('../numerics/engine').HeadPatch,
 ): NumericalTrace {
   const inputIds = tokenizer.encode(settings.prompt)
   const trace = numericalAdapter.run(weights.config, {
@@ -205,6 +206,7 @@ export function runStories(
       kvCache: { mode: 'full' },
     },
     checkpoint: weights,
+    intervention,
     onToken: (ids) =>
       onToken?.(
         ids,
@@ -221,4 +223,33 @@ export function runStories(
       .slice(tokenizer.decode(inputIds).length),
   }
   return trace
+}
+
+/** A bounded intervention before Wo. Donor/recipient final positions are explicit;
+ * no checkpoint parameter is mutated. The baseline precedes token divergence. */
+export function runStoriesExperiment(
+  weights: CheckpointWeights,
+  tokenizer: StoriesTokenizer,
+  settings: TrainedRunSettings,
+  intervention?: import('../study/records').HeadIntervention,
+  onToken?: (ids: number[], text: string) => void,
+): { trace: NumericalTrace; baseline?: NumericalTrace } {
+  if (!intervention) return { trace: runStories(weights, tokenizer, settings, onToken) }
+  const fixed = { ...settings, generate: 1 },
+    baseline = runStories(weights, tokenizer, fixed),
+    position = baseline.settings.inputIds.length - 1
+  let replacement: number[] | undefined,
+    source =
+      'Zero-vector replacement; same prompt, checkpoint and sampling settings as the baseline.'
+  if (intervention.mode === 'patch') {
+    if (intervention.donorPrompt === undefined)
+      throw new Error('Choose a donor prompt before patching.')
+    const donor = runStories(weights, tokenizer, { ...fixed, prompt: intervention.donorPrompt }),
+      tensor = donor.tensors[`call0/l${intervention.layer}/head-${intervention.head}`]
+    if (!tensor) throw new Error('Choose a valid donor layer and query head.')
+    replacement = Array.from(tensor.data.slice(-weights.config.headDim))
+    source = `Donor final prompt position ${donor.settings.inputIds.length - 1}; same verified checkpoint; donor IDs [${donor.settings.inputIds.join(',')}].`
+  }
+  const patch = { ...intervention, position, replacement, source }
+  return { trace: runStories(weights, tokenizer, fixed, onToken, patch), baseline }
 }

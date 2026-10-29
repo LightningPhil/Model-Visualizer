@@ -61,6 +61,24 @@ export function explainCell(
               : [],
   }
   const cell = (t: string, i: number) => ({ tensor: t, index: i })
+  if (r.op === 'intervention') {
+    const row = indices[tensor.axes.indexOf('T')],
+      affected = tensor.positions?.T?.[row] === r.position
+    return {
+      ...proof,
+      title: affected ? 'A controlled head-output intervention' : 'An unchanged query row',
+      tex: affected ? String.raw`h_{p,:}\leftarrow h^{\mathrm{replacement}}_{:}` : 'y_i=x_i',
+      explanation: affected
+        ? `${r.mode === 'zero' ? 'Replace this head vector with zeros' : 'Replace this head vector with the donor vector'}. ${r.source}. All later operations use this replacement; this is not an original checkpoint activation.`
+        : 'This row is outside the intervention position and retains its computed value.',
+      parents: [cell(r.input, index)],
+      details: [
+        { label: 'Original computed value', value: data[r.input].data[index] },
+        { label: 'Intervention position', value: r.position },
+      ],
+      sourceIds: ['stories260k'],
+    }
+  }
   if (r.op === 'checkpoint')
     return {
       ...proof,

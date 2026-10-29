@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -76,12 +77,14 @@ export function SimulationPanel({
   ready,
   onClose,
   onCachePolicy,
+  onExplain,
 }: {
   sim: SimulationController
   config: ModelConfig
   ready: boolean
   onClose: () => void
   onCachePolicy: (policy: CachePolicy) => void
+  onExplain: () => void
 }) {
   const { frame, options } = sim
   const change = (changes: Partial<typeof options>) => sim.setOptions({ ...options, ...changes })
@@ -252,6 +255,10 @@ export function SimulationPanel({
               </div>
               <h3>{frame?.title}</h3>
               <p>{frame?.description}</p>
+              <button className="wiki-entry-button" onClick={onExplain}>
+                <BookOpen size={14} />
+                Explain this step
+              </button>
               <code>
                 B = 1 · T = {frame?.queryLength} · S ={' '}
                 {Math.max(frame?.contextLength ?? 0, ...(frame?.cacheLengths ?? []))}

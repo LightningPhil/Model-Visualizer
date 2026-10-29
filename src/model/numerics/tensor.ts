@@ -2,6 +2,7 @@
  * Storage is Float32Array. JS Number accumulates sums; outputs round to FP32.
  * This is a reference implementation, not a reproduction of a GPU kernel. */
 export type Recipe =
+  | { op: 'intervention'; input: string; position: number; mode: 'zero' | 'patch'; source: string }
   | { op: 'parameter'; seed: number }
   | {
       op: 'checkpoint'

@@ -1,0 +1,285 @@
+.study-desk {
+  padding: 26px;
+  max-width: 1000px;
+  margin: auto;
+  min-width: 0;
+}
+.study-desk p,
+.study-training p,
+.study-record-form p {
+  color: var(--secondary);
+  font-size: 12px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.study-questions {
+  margin: 25px 0;
+}
+.study-questions > div,
+.study-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+.study-questions button {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  padding: 16px;
+  text-align: left;
+  line-height: 1.6;
+  font-size: 13px;
+  border-radius: 7px;
+}
+.study-questions button span {
+  display: block;
+  font-size: 10px;
+  color: var(--cyan);
+  margin-top: 12px;
+}
+.study-investigation,
+.study-training,
+.study-record-library {
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 24px 0;
+  min-width: 0;
+}
+.study-desk label,
+.study-training label,
+.study-record-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--secondary);
+  font-size: 11px;
+  margin: 12px 0;
+}
+.study-desk textarea,
+.study-record-form textarea {
+  min-height: 65px;
+  width: 100%;
+  resize: vertical;
+}
+.study-desk input,
+.study-desk select,
+.study-training input,
+.study-training select {
+  width: 100%;
+  padding: 8px;
+  min-width: 0;
+}
+.study-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 15px 0;
+}
+.study-actions button,
+.study-record-form button,
+.study-desk button {
+  padding: 9px 12px;
+}
+.study-desk details,
+.study-training details,
+.study-record-form {
+  border-top: 1px solid var(--border);
+  margin: 16px 0;
+  padding-top: 14px;
+}
+.study-desk summary,
+.study-training summary,
+.study-record-form summary {
+  cursor: pointer;
+  color: var(--text);
+  font-size: 12px;
+}
+.study-desk pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+}
+.study-training svg {
+  width: 100%;
+  max-height: 280px;
+  color: var(--secondary);
+  margin-top: 15px;
+}
+.study-table-wrap {
+  overflow: auto;
+  max-height: 260px;
+}
+.study-table-wrap table {
+  border-collapse: collapse;
+  width: 100%;
+  font: 11px var(--mono);
+}
+.study-table-wrap th,
+.study-table-wrap td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.study-observation {
+  border-left: 2px solid var(--cyan);
+  padding-left: 16px;
+  margin-top: 20px;
+}
+.wiki-dock-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 0 26px 12px;
+  font-size: 11px;
+}
+.wiki-live-cell {
+  padding: 12px 22px;
+  background: var(--cyan-bg);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.wiki-live-cell details summary {
+  cursor: pointer;
+}
+.wiki-dock-controls button {
+  padding: 6px 10px;
+}
+.study-desk button,
+.study-record-form button,
+.wiki-dock-controls button,
+.run-comparison button,
+.wiki-docked .wiki-browse-button {
+  background: var(--surface);
+  color: var(--cyan);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-family: inherit;
+  cursor: pointer;
+  font-size: 11px;
+}
+.study-desk button:hover,
+.wiki-dock-controls button:hover {
+  background: var(--cyan-bg);
+}
+.study-desk button:disabled,
+.wiki-dock-controls button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.wiki-dock-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--secondary);
+}
+.wiki-modal.wiki-docked {
+  position: fixed;
+  inset: 8px 8px 8px auto;
+  margin: 0;
+  width: 520px;
+  height: calc(100dvh - 16px);
+  max-height: none;
+  z-index: 1500;
+  box-shadow: 0 5px 30px #0004;
+}
+.wiki-docked .wiki-shell {
+  display: flex;
+  position: relative;
+}
+.wiki-docked .wiki-sidebar {
+  display: none;
+}
+.wiki-docked .wiki-sidebar.is-open {
+  display: block;
+  width: 100%;
+}
+.wiki-docked .wiki-shell:has(.wiki-sidebar.is-open) .wiki-reading-pane {
+  display: none;
+}
+.wiki-docked .wiki-reading-pane {
+  width: 100%;
+}
+.run-comparison {
+  margin: 0 0 18px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.run-comparison > summary {
+  cursor: pointer;
+  color: var(--cyan);
+}
+.run-comparison button {
+  padding: 7px;
+  text-align: left;
+}
+.run-comparison input {
+  width: 80px;
+  padding: 6px;
+  margin-left: 8px;
+}
+.wiki-docked .wiki-article-layout {
+  display: block;
+  padding: 22px;
+}
+.wiki-docked .wiki-outline {
+  display: none;
+}
+.wiki-docked .wiki-toolbar {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.wiki-docked .wiki-search {
+  flex-basis: 100%;
+  order: -1;
+}
+.wiki-docked .wiki-browse-button {
+  display: flex;
+}
+.wiki-docked .wiki-paths,
+.wiki-docked .wiki-category-grid {
+  grid-template-columns: 1fr;
+}
+@media (min-width: 1100px) {
+  .app.wiki-docked-host {
+    width: calc(100% - 536px);
+  }
+  .app.wiki-docked-host .project-breadcrumb,
+  .app.wiki-docked-host .study-start-button {
+    display: none;
+  }
+  .app.wiki-docked-host .topbar {
+    padding: 0 12px;
+    gap: 8px;
+  }
+  dialog.modal.wiki-docked-host {
+    width: calc(100vw - 552px);
+    max-width: none;
+    margin-left: 8px;
+    margin-right: auto;
+  }
+  .numerical-modal.wiki-docked-host .numerical-body {
+    grid-template-columns: 170px minmax(0, 1fr) 240px;
+  }
+}
+@media (max-width: 760px) {
+  .study-desk {
+    padding: 16px;
+  }
+  .study-investigation,
+  .study-training,
+  .study-record-library {
+    padding: 14px;
+  }
+  .study-controls,
+  .study-questions > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

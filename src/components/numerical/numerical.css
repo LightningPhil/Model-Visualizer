@@ -1666,6 +1666,9 @@ dialog.numerical-modal {
     font-size: 7px;
     padding: 6px;
   }
+  .numerical-topline .compact-action-label {
+    display: none;
+  }
   .numerical-badge {
     font-size: 6px;
     letter-spacing: 0.4px;
