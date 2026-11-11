@@ -54,6 +54,7 @@ Keep these notices with redistributed builds and provide corresponding
 source for any modifications you make to the LGPL library.
 
 ELK / elkjs 0.12.0 — used under EPL-2.0
+Copyright (c) 2017, 2021 Kiel University and others.
 Unmodified upstream graph layout engine; upstream also offers a conditional
 secondary GPL option. Original copyright and license text are reproduced
 in ../THIRD_PARTY_NOTICES.txt.
