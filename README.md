@@ -1,5 +1,17 @@
 # Model Visualizer
 
+**[Open Model Visualizer](https://lightningphil.github.io/Model-Visualizer/)** — runs locally in your browser, with no account or API key.
+
+## License and credits
+
+Project code and documentation are available under the [MIT license](LICENSE). Bundled libraries, fonts, icons and model assets retain their own licenses; this is not an MIT-only dependency tree. [Full third-party notices](public/THIRD_PARTY_NOTICES.txt) include original copyright and license texts, and the [dependency inventory](docs/dependency-licenses.md) covers runtime and build/test packages. In particular, libavoid is LGPL-2.1-or-later, ELK is used under EPL-2.0, and DM Sans/IBM Plex Mono use OFL-1.1. Stories260K is MIT licensed by Andrej Karpathy. [Library sources and replacement instructions](public/licenses/README.txt) accompany every deployed build.
+
+## GitHub Pages
+
+Pushes to `main` build and deploy the site using [the Pages workflow](.github/workflows/pages.yml). Repository **Settings → Pages → Source** must be **GitHub Actions**. The workflow derives the deployment path from GitHub Pages metadata; Vite applies it to scripts, fonts, workers, WASM and checkpoint URLs. For a local build at the same project path, run `npm run build -- --base=/Model-Visualizer/` and `npm run preview -- --base=/Model-Visualizer/`, then open `/Model-Visualizer/`. `npm run test:pages` verifies that production path in an isolated browser workspace.
+
+The application computes in the browser. Saved workspaces and preferences belong to the current browser/device; use JSON export/import to move a workspace between devices. GitHub Pages serves the application and model files, not your saved notebook.
+
 An interactive atlas of language-model architecture, built in TypeScript. Follow a prompt through tokenization, transformer blocks, attention, KV state and output decoding. Inspect the mathematics on a component **or a connection**.
 
 ![The architecture workbench in dark mode](docs/images/workbench-dark.png)

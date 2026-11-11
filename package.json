@@ -1,14 +1,18 @@
 {
   "name": "model-visualizer",
   "private": true,
+  "license": "MIT",
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "licenses": "node --experimental-strip-types scripts/third-party-notices.ts",
+    "prebuild": "npm run licenses",
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:pages": "npm run build -- --base=/Model-Visualizer/ && playwright test --config=playwright.pages.config.ts",
     "benchmark": "node --experimental-strip-types scripts/benchmark.ts",
     "schema": "node --experimental-strip-types scripts/export-schema.ts",
     "format": "prettier --write . --ignore-path .gitignore",

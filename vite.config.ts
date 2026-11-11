@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
 
 export default defineConfig({
+  base: process.env.VITE_BASE_PATH || '/',
   plugins: [react()],
   // Formatters can briefly truncate a module while rewriting it on Windows.
   // Wait for stable content before transforming/caching a hot update.
